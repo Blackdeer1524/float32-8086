@@ -1,0 +1,20 @@
+# Running
+
+/m - multiple passes
+TASM /m ${file}.asm
+
+/x No map(?) 
+/3 (?)
+TLINK /x /3 ${file}.obj
+${file}.exe
+
+# Debugging
+  
+/zi - debug info (full)
+TASM /zi ${file}
+
+/t create COM file
+/v Full symbolic debug information
+TLINK /t/v/3 ${filename}.obj
+
+TD ${filename}.exe
