@@ -2,9 +2,11 @@
 .model flat   
  
 data segment use16
-    input_buf db 26         ;MAX NUMBER OF CHARACTERS ALLOWED (25).
-              db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
-              db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
+    ;input_buf db 26         ;MAX NUMBER OF CHARACTERS ALLOWED (25).
+    ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
+    ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
+    input_str db 4 
+              db "3.25", "$"
 
     err_unexpected_chr db "Invalid symbol in number"
 data ends
@@ -47,42 +49,50 @@ input endp
     
 
 ; eax, ecx, edx are caller-safe!
-read_whole_part proc ; (char len, char *str, char *read_len)
+parse_float proc ; (uint16 len, char *str)
     push ebp
     mov ebp, esp
+    
+    sub ESP, 8;
+    mov dword ptr [EBP - 4], 0 ; sign data
+    mov dword ptr [EBP - 8], 0 ; mantissa buffer
     
     ; callee-safe registers
     push bx
     push si
     
     ; subroutine body 
-    xor dx, dx
-    mov dl, byte ptr [ebp + 6]
     len EQU dx
-    len_l equ dl
+    mov len, word ptr [ebp + 6]
     
-    mov bx, word ptr [ebp + 6 + 1]  ; string ptr
     str_ptr EQU bx
+    mov str_ptr, word ptr [ebp + 6 + 2]  ; string ptr
     
     xor eax, eax
     whole_part EQU EAX
     whole_part_l EQU AL 
 
     xor si, si
+    
+    cmp byte ptr [str_ptr], '-'
+        jne _loop
+        mov byte ptr [EBP - 1], 080h  ; 2^7
+        inc si
 _loop:
     cmp si, len
     je _no_dot
     
-    cmp byte ptr [bx + si], '.'
+    cmp byte ptr [str_ptr + si], '.'
     je _found_dot
     
-    cmp [bx + si], '0'
+    cmp byte ptr [str_ptr + si], '0'
     jl _error
-    cmp [bx + si], '9' 
+    cmp byte ptr [str_ptr + si], '9' 
     jg _error
     
     imul whole_part, whole_part, 10
-    add whole_part, [bx + si] - '0'
+    add whole_part_l, byte ptr [str_ptr + si]
+    sub whole_part_l, '0'
     
     inc si
     jmp _loop
@@ -101,10 +111,10 @@ _found_dot:
     push str_ptr
 
     sub len, si
-    push len_l
+    push len
     
     call parse_mantissa
-    pop len_l
+    pop len
     pop str_ptr
     
     pop mantissa 
@@ -112,26 +122,23 @@ _found_dot:
     xchg mantissa, whole_part
 
 _build_float:
-    power EQU dl
+    power EQU EDX
     xor power, power
-    
-    sub ESP, 4
-    MOV DWORD PTR [EBP - 4], 0
     
 _loop2:
     cmp whole_part, 1
-        je _loop2_end 
+        jle _loop2_end 
     
     inc power
     
-    mov byte ptr [ebp - 4], whole_part_l
-    and byte ptr [ebp - 4], 1 ; whole (mod 2)
-    shl byte ptr [ebp - 4], 7
+    mov byte ptr [ebp - 5], whole_part_l
+    and byte ptr [ebp - 5], 1 ; whole (mod 2)
+    shl byte ptr [ebp - 5], 7
     
     shr mantissa, 1
-    or mantissa, dword ptr [ebp - 4]
+    or mantissa, dword ptr [ebp - 8]
     
-    shr whole_part
+    shr whole_part, 1
     jmp _loop2
     
 _loop2_end:
@@ -139,26 +146,15 @@ _loop2_end:
     je _epilogue
     
     add power, 127
-    shr mantissa, 8
-
-
-
-
-
-
-
-
-
-
-
+    shl power, 24
+    shr power, 1
     
-    
-
-
+    or power, dword ptr [ebp - 4]  ; adding a sign bit
+    shr mantissa, 9
+    or mantissa, power
 
 _epilogue:
     mov EAX, mantissa
-    add ESP, 4
 
     ; restoring registers
     pop si
@@ -170,12 +166,14 @@ _epilogue:
 
 _error:
     call exit_invalid_char 
-read_whole_part endp
+parse_float endp
 
 
-parse_mantissa proc  ; (char len, char [data *] str)
+parse_mantissa proc  ; (uint16 len, char [data *] str)
     push ebp
     mov ebp, esp
+    
+    sub ESP, 2
     
     push bx
     push si
@@ -184,8 +182,8 @@ parse_mantissa proc  ; (char len, char [data *] str)
 
     xor eax, eax ; mantissa
     xor ecx, ecx
-    mov cl, BYTE PTR [EBP + 6]      ; str_length
-    mov bx, WORD PTR [EBP + 6 + 1]  ; str_ptr. points after a dot symbol
+    mov cx, word PTR [EBP + 6]      ; str_length
+    mov bx, WORD PTR [EBP + 6 + 2]  ; str_ptr. points after a dot symbol
     
     MAX_MANTISSA_SIZE = 23
     cmp cl, MAX_MANTISSA_SIZE 
@@ -197,7 +195,7 @@ parse_mantissa proc  ; (char len, char [data *] str)
     xor si, si 
 _normaize_loop:
     cmp si, cx
-    jge _loop_end 
+    jge _normaize_loop_end
     
     cmp byte ptr [bx + si], '0'
     jl _error
@@ -207,13 +205,14 @@ _normaize_loop:
     
     sub byte ptr [bx + si], '0'
     inc si
+    jmp _normaize_loop
 _normaize_loop_end:
 
-    sub ESP, 2
     has_decimal_part EQU byte ptr [EBP - 1]
     iteration_count EQU byte ptr [EBP - 2]
-    xor iteration_count, iteration_count
+    mov iteration_count, 0
 
+    mov di, 31
 _decimal_part_outer_start:
     cmp iteration_count, MAX_MANTISSA_SIZE
         je _decimal_part_outer_end
@@ -223,8 +222,6 @@ _decimal_part_outer_start:
     mov si, cx
     dec si
     
-    mov di, 31
-
     xor edx, edx 
     mov has_decimal_part, 0 
     _decimal_part_inner:
@@ -245,7 +242,7 @@ _decimal_part_outer_start:
        _decimal_part_inner_digit_lt_10_done: 
         cmp digit, 0
             je cmp_done 
-            mov has_decimal_part 1
+            mov has_decimal_part, 1
         cmp_done:
         
         cmp si, 0
@@ -257,8 +254,13 @@ _decimal_part_inner_end:
     cmp has_decimal_part, 1
         jne _no_decimal_part_left
 
-        shl EDX, DI
+        push CX
+        mov CX, DI
+
+        shl EDX, CL
         dec DI
+
+        pop CX
         
         or eax, edx
         jmp _decimal_part_outer_start
@@ -267,18 +269,23 @@ _decimal_part_inner_end:
         cmp EDX, 1
         jne _decimal_part_outer_end
 
-        shl EDX, DI 
+        push CX
+        mov CX, DI
+
+        shl EDX, CL
         dec DI
+
+        pop CX
         
         or eax, edx
         jmp _decimal_part_outer_end 
 _decimal_part_outer_end:
-    ADD ESP, 2
-
     ; epilogue
     pop di
     pop si
     pop bx
+    
+    ADD ESP, 2
 
     mov esp, ebp
     pop ebp
@@ -288,65 +295,18 @@ _error:
     call exit_invalid_char    
 parse_mantissa endp
 
-
-
-parse_float proc; void -> float
-    push EBP
-    mov EBP, ESP
-
-    sub ESP, 4  
-    mov byte ptr [EBP - 4], 0
-
-    xor ecx, ecx
-    mov cl, [offset input_buf + 1]
-    mov si, offset input_buf + 2
-
-    cmp [ebx], '-'
-    jne __parse_float_numbers
-        mov BYTE PTR [EBP - 1], 1
-
-__parse_float_numbers:
-    xor eax, eax
-__parse_float_start:
-    cmp [ebx], '.'
-       je __parse_float_decimal_part
-
-    cmp [ebx], '0'
-        jl __parse_float_check_dot
-    cmp [ebx], '9'
-        jg __parse_float_check_dot
-
-    mul 10
-    add eax, [ebx]
-    sub eax, '0'
-
-    inc ebx
-    loopnz __parse_float_start
-
-__parse_float_decimal_part:
-
-
-    
-
-    
-    je __parse_float_build
-
-
-    mov ESP, EBP
-    pop EBP
-    ret
-
-
-
-parse_float endp
- 
 main:     
     mov    eax, data
     mov    ds, eax
 
-    mov    eax, offset input_buf
-    push   eax
-    call   input
+
+    mov dx, offset input_str + 1
+    push dx
+
+    xor dx, dx
+    mov dl, [input_str]
+    push dx
+    call parse_float
 
     xor    eax, eax
     mov    ah, 4Ch
