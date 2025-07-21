@@ -13,8 +13,13 @@ ${file}.exe
 /zi - debug info (full)
 TASM /zi ${file}
 
-/t create COM file
+/x no map
 /v Full symbolic debug information
-TLINK /t/v/3 ${filename}.obj
+/k Suppress "No stack" warning msg
+
+/t create COM file
+
+
+TLINK /x /v /3 /k ${filename}.obj
 
 TD ${filename}.exe
