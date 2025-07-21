@@ -82,6 +82,8 @@ parse_float proc ; (uint16 len, char *str)
         mov byte ptr [EBP - 1], 080h  ; 2^7
         inc si
     
+    exponent EQU EDX
+    xor exponent, exponent
 _loop:
     cmp si, len
     je _no_dot
@@ -113,6 +115,19 @@ _found_dot:
     push whole_part
     push mantissa
     
+    sub ebp, 9
+    push ebp
+    add ebp, 9
+    
+    cmp whole_part, 0
+        je _whole_part_is_zero
+        push 0
+        jmp _done_whole_part_cmp
+    _whole_part_is_zero:
+        push 1
+        jmp _done_whole_part_cmp
+    _done_whole_part_cmp:
+    
     add str_ptr, si
     push str_ptr
 
@@ -120,16 +135,20 @@ _found_dot:
     push len
     
     call parse_mantissa
+
     pop len
     pop str_ptr
+    
+    sub esp, 2
+    sub esp, 4
+
+    mov exponent, dword ptr [ebp - 9]
 
     pop mantissa
     mov mantissa, eax
     pop whole_part
 
 _build_float:
-    exponent EQU EDX
-    xor exponent, exponent
     
 _loop2:
     cmp whole_part, 1
@@ -176,11 +195,14 @@ _error:
 parse_float endp
 
 
-parse_mantissa proc  ; (uint16 len, char [data *] str, char [stack *] exponent)
+parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
     push ebp
     mov ebp, esp
     
     sub ESP, 2
+    
+    still_skipping_flag equ byte ptr [ebp + 6 + 4]
+    mov still_skipping_flag, 1 
     
     push bx
     push si
@@ -194,8 +216,8 @@ parse_mantissa proc  ; (uint16 len, char [data *] str, char [stack *] exponent)
     str_ptr EQU bx
     mov str_ptr, WORD PTR [EBP + 6 + 2]  ; str_ptr. points after a dot symbol
     
-    ; exponent_ptr equ EDI
-    ; mov exponent_ptr, DWORD PTR [EBP + 6 + 4]
+    exponent_ptr equ EDI
+    mov exponent_ptr, DWORD PTR [EBP + 6 + 6]
     
     MAX_MANTISSA_SIZE = 23
     cmp len, MAX_MANTISSA_SIZE 
@@ -240,7 +262,7 @@ _decimal_part_outer_start:
     mov has_decimal_part, 0 
     _decimal_part_inner:
         digit EQU byte ptr [str_ptr + si]
-        
+    
         add carry_l, digit 
         add digit, carry_l ; multiply digit by 2 with a carry
         
@@ -268,6 +290,19 @@ _decimal_part_inner_end:
     cmp has_decimal_part, 1
         jne _no_decimal_part_left
 
+        cmp still_skipping_flag, 1
+            jne _after_still_skipping_flag
+            cmp carry, 0
+                jne _carry_is_not_zero
+                dec iteration_count
+                dec dword ptr [exponent_ptr]
+                jmp _decimal_part_outer_start
+
+            _carry_is_not_zero:
+            mov still_skipping_flag, 0
+            jmp _after_still_skipping_flag
+            
+        _after_still_skipping_flag:
         shl carry, CL
         dec CL
         

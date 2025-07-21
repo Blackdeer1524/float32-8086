@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     input_str db (input_EOF - $ - 1)
-              db "-13.1123"
+              db "3.1"
     input_EOF db "$"
 
     err_unexpected_chr db "Invalid symbol in number"
@@ -82,6 +82,8 @@ parse_float proc ; (uint16 len, char *str)
         mov byte ptr [EBP - 1], 080h  ; 2^7
         inc si
     
+    exponent__parse_float EQU EDX
+    xor exponent__parse_float, exponent__parse_float
 _loop__parse_float:
     cmp si, len__parse_float
     je _no_dot__parse_float
@@ -113,6 +115,19 @@ _found_dot__parse_float:
     push whole_part__parse_float
     push mantissa__parse_float
     
+    sub ebp, 9
+    push ebp
+    add ebp, 9
+    
+    cmp whole_part__parse_float, 0
+        je _whole_part_is_zero__parse_float
+        push 0
+        jmp _done_whole_part_cmp__parse_float
+    _whole_part_is_zero__parse_float:
+        push 1
+        jmp _done_whole_part_cmp__parse_float
+    _done_whole_part_cmp__parse_float:
+    
     add str_ptr__parse_float, si
     push str_ptr__parse_float
 
@@ -120,16 +135,20 @@ _found_dot__parse_float:
     push len__parse_float
     
     call parse_mantissa
+
     pop len__parse_float
     pop str_ptr__parse_float
+    
+    sub esp, 2
+    sub esp, 4
+
+    mov exponent__parse_float, dword ptr [ebp - 9]
 
     pop mantissa__parse_float
     mov mantissa__parse_float, eax
     pop whole_part__parse_float
 
 _build_float__parse_float:
-    exponent__parse_float EQU EDX
-    xor exponent__parse_float, exponent__parse_float
     
 _loop2__parse_float:
     cmp whole_part__parse_float, 1
@@ -176,11 +195,14 @@ _error__parse_float:
 parse_float endp
 
 
-parse_mantissa proc  ; (uint16 len, char [data *] str, char [stack *] exponent)
+parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
     push ebp
     mov ebp, esp
     
     sub ESP, 2
+    
+    still_skipping_flag__parse_mantissa equ byte ptr [ebp + 6 + 4]
+    mov still_skipping_flag__parse_mantissa, 1 
     
     push bx
     push si
@@ -194,8 +216,8 @@ parse_mantissa proc  ; (uint16 len, char [data *] str, char [stack *] exponent)
     str_ptr__parse_mantissa EQU bx
     mov str_ptr__parse_mantissa, WORD PTR [EBP + 6 + 2]  ; str_ptr__parse_mantissa. points after a dot symbol
     
-    ; exponent_ptr equ EDI
-    ; mov exponent_ptr, DWORD PTR [EBP + 6 + 4]
+    exponent_ptr__parse_mantissa equ EDI
+    mov exponent_ptr__parse_mantissa, DWORD PTR [EBP + 6 + 6]
     
     MAX_MANTISSA_SIZE__parse_mantissa = 23
     cmp len__parse_mantissa, MAX_MANTISSA_SIZE__parse_mantissa 
@@ -240,7 +262,7 @@ _decimal_part_outer_start__parse_mantissa:
     mov has_decimal_part__parse_mantissa, 0 
     _decimal_part_inner__parse_mantissa:
         digit__parse_mantissa EQU byte ptr [str_ptr__parse_mantissa + si]
-        
+    
         add carry_l__parse_mantissa, digit__parse_mantissa 
         add digit__parse_mantissa, carry_l__parse_mantissa ; multiply digit__parse_mantissa by 2 with a carry__parse_mantissa
         
@@ -268,6 +290,19 @@ _decimal_part_inner_end__parse_mantissa:
     cmp has_decimal_part__parse_mantissa, 1
         jne _no_decimal_part_left__parse_mantissa
 
+        ; cmp still_skipping_flag__parse_mantissa, 1
+        ;     jne _after_still_skipping_flag__parse_mantissa
+        ;     cmp carry__parse_mantissa, 0
+        ;         jne _carry_is_not_zero__parse_mantissa
+        ;         dec iteration_count__parse_mantissa
+        ;         dec dword ptr [exponent_ptr__parse_mantissa]
+        ;         jmp _decimal_part_outer_start__parse_mantissa
+
+        ;     _carry_is_not_zero__parse_mantissa:
+        ;     mov still_skipping_flag__parse_mantissa, 0
+        ;     jmp _after_still_skipping_flag__parse_mantissa
+            
+        _after_still_skipping_flag__parse_mantissa:
         shl carry__parse_mantissa, CL
         dec CL
         
