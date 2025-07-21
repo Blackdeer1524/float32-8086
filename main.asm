@@ -5,8 +5,9 @@ data segment use16
     ;input_buf db 26         ;MAX NUMBER OF CHARACTERS ALLOWED (25).
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
-    input_str db 3 
-              db "3.1", "$"
+    input_str db (input_EOF - $ - 1)
+              db "3.1"
+    input_EOF db "$"
 
     err_unexpected_chr db "Invalid symbol in number"
 data ends
@@ -53,16 +54,18 @@ parse_float proc ; (uint16 len, char *str)
     push ebp
     mov ebp, esp
     
-    sub ESP, 8;
+    sub ESP, 9;
     mov dword ptr [EBP - 4], 0 ; sign data
     mov dword ptr [EBP - 8], 0 ; mantissa buffer
+    mov dword ptr [EBP - 9], 0 ; additional exponent
     
     ; callee-safe registers
     push bx
     push si
+    push di
     
     ; subroutine body 
-    len EQU dx
+    len EQU di
     mov len, word ptr [ebp + 6]
     
     str_ptr EQU bx
@@ -78,6 +81,7 @@ parse_float proc ; (uint16 len, char *str)
         jne _loop
         mov byte ptr [EBP - 1], 080h  ; 2^7
         inc si
+    
 _loop:
     cmp si, len
     je _no_dot
@@ -100,13 +104,15 @@ _loop:
 _no_dot:
     mantissa EQU ECX
 
-    xor ECX, ECX
+    xor mantissa,mantissa
     jmp _build_float
     
 _found_dot:
+    inc si ; skipping the dot
+    
     push whole_part
-
-    inc si
+    push mantissa
+    
     add str_ptr, si
     push str_ptr
 
@@ -116,23 +122,23 @@ _found_dot:
     call parse_mantissa
     pop len
     pop str_ptr
-    
-    pop mantissa 
-    
-    xchg mantissa, whole_part
+
+    pop mantissa
+    mov mantissa, eax
+    pop whole_part
 
 _build_float:
-    power EQU EDX
-    xor power, power
+    exponent EQU EDX
+    xor exponent, exponent
     
 _loop2:
     cmp whole_part, 1
         jle _loop2_end 
     
-    inc power
+    inc exponent
     
     mov byte ptr [ebp - 5], whole_part_l
-    and byte ptr [ebp - 5], 1 ; whole (mod 2)
+    and byte ptr [ebp - 5], 1 
     shl byte ptr [ebp - 5], 7
     
     shr mantissa, 1
@@ -145,18 +151,19 @@ _loop2_end:
     cmp mantissa, 0
     je _epilogue
     
-    add power, 127
-    shl power, 24
-    shr power, 1
+    add exponent, 127
+    shl exponent, 24
+    shr exponent, 1
     
-    or power, dword ptr [ebp - 4]  ; adding a sign bit
+    or exponent, dword ptr [ebp - 4]  ; adding a sign bit
     shr mantissa, 9
-    or mantissa, power
+    or mantissa, exponent
 
 _epilogue:
     mov EAX, mantissa
 
     ; restoring registers
+    pop di
     pop si
     pop bx
 
@@ -169,7 +176,7 @@ _error:
 parse_float endp
 
 
-parse_mantissa proc  ; (uint16 len, char [data *] str)
+parse_mantissa proc  ; (uint16 len, char [data *] str, char [stack *] exponent)
     push ebp
     mov ebp, esp
     
@@ -177,66 +184,73 @@ parse_mantissa proc  ; (uint16 len, char [data *] str)
     
     push bx
     push si
-    push di
+    push edi
     ; subroutine body
 
     xor eax, eax ; mantissa
-    xor ecx, ecx
-    mov cx, word PTR [EBP + 6]      ; str_length
-    mov bx, WORD PTR [EBP + 6 + 2]  ; str_ptr. points after a dot symbol
+    
+    len EQU word PTR [EBP + 6]     
+    
+    str_ptr EQU bx
+    mov str_ptr, WORD PTR [EBP + 6 + 2]  ; str_ptr. points after a dot symbol
+    
+    ; exponent_ptr equ EDI
+    ; mov exponent_ptr, DWORD PTR [EBP + 6 + 4]
     
     MAX_MANTISSA_SIZE = 23
-    cmp cl, MAX_MANTISSA_SIZE 
+    cmp len, MAX_MANTISSA_SIZE 
     jle _mantissa_is_at_most_23
-        mov cl, MAX_MANTISSA_SIZE
+        mov len, MAX_MANTISSA_SIZE
 
-    _mantissa_is_at_most_23:
-    
+_mantissa_is_at_most_23:
     xor si, si 
 _normaize_loop:
-    cmp si, cx
+    cmp si, len
     jge _normaize_loop_end
     
-    cmp byte ptr [bx + si], '0'
+    cmp byte ptr [str_ptr + si], '0'
     jl _error
 
-    cmp byte ptr [bx + si], '9'
+    cmp byte ptr [str_ptr + si], '9'
     jg _error
     
-    sub byte ptr [bx + si], '0'
+    sub byte ptr [str_ptr + si], '0'
     inc si
     jmp _normaize_loop
 _normaize_loop_end:
-
+    
     has_decimal_part EQU byte ptr [EBP - 1]
     iteration_count EQU byte ptr [EBP - 2]
     mov iteration_count, 0
 
-    mov di, 31
+    mov cl, 31
 _decimal_part_outer_start:
     cmp iteration_count, MAX_MANTISSA_SIZE
         je _decimal_part_outer_end
 
     inc iteration_count
 
-    mov si, cx
+    mov si, len
     dec si
     
-    xor edx, edx 
+    carry equ edx
+    xor carry, carry 
+    carry_l equ dl
+
     mov has_decimal_part, 0 
     _decimal_part_inner:
-        digit EQU byte ptr [bx + si]
+        digit EQU byte ptr [str_ptr + si]
         
-        add dl, digit 
-        add digit, dl ; multiply digit by 2 with a carry
+        add carry_l, digit 
+        add digit, carry_l ; multiply digit by 2 with a carry
         
         cmp digit, 10
         jl _decimal_part_inner_digit_lt_10
             sub digit, 10
-            mov dl, 1
+            mov carry_l, 1
             jmp _decimal_part_inner_digit_lt_10_done
         _decimal_part_inner_digit_lt_10:
-            xor dl, dl
+            xor carry_l, carry_l 
             jmp _decimal_part_inner_digit_lt_10_done 
  
        _decimal_part_inner_digit_lt_10_done: 
@@ -254,34 +268,24 @@ _decimal_part_inner_end:
     cmp has_decimal_part, 1
         jne _no_decimal_part_left
 
-        push CX
-        mov CX, DI
-
-        shl EDX, CL
-        dec DI
-
-        pop CX
+        shl carry, CL
+        dec CL
         
-        or eax, edx
+        or eax, carry
         jmp _decimal_part_outer_start
 
     _no_decimal_part_left:
-        cmp EDX, 1
+        cmp carry, 1
         jne _decimal_part_outer_end
 
-        push CX
-        mov CX, DI
-
-        shl EDX, CL
-        dec DI
-
-        pop CX
+        shl carry, CL
+        dec CL
         
-        or eax, edx
+        or eax, carry 
         jmp _decimal_part_outer_end 
 _decimal_part_outer_end:
     ; epilogue
-    pop di
+    pop edi
     pop si
     pop bx
     
