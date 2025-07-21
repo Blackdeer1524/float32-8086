@@ -5,8 +5,8 @@ data segment use16
     ;input_buf db 26         ;MAX NUMBER OF CHARACTERS ALLOWED (25).
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
-    input_str db 5 
-              db "-3.25", "$"
+    input_str db 3 
+              db "3.1", "$"
 
     err_unexpected_chr db "Invalid symbol in number"
 data ends
