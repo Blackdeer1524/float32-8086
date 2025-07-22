@@ -51,7 +51,6 @@ input proc
     pop    ebp
     ret
 input endp
-    
 
 ; eax, ecx, edx are caller-safe!
 parse_float proc ; (uint16 len, char *str)
@@ -194,7 +193,6 @@ _epilogue:
 _error:
     call exit_invalid_char 
 parse_float endp
-
 
 parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
     push ebp
@@ -339,7 +337,6 @@ _error:
     call exit_invalid_char    
 parse_mantissa endp
     
-
 exchange_memory macro left, right, tmp_reg
     mov tmp_reg, left
     xchg tmp_reg, right
@@ -507,8 +504,13 @@ float_power_2_div proc ; (uint32 [float] target; uint16 power_of_two)
     sub esp, 8
     
     target equ eax
+    shift equ word ptr [ebp + 10] 
+
     mov target, dword ptr [EBP + 6]
     cmp target, 0
+    je _epilogue
+    
+    cmp shift, 0
     je _epilogue
     
     sign     equ dword ptr [EBP - 4]
@@ -527,12 +529,12 @@ float_power_2_div proc ; (uint32 [float] target; uint16 power_of_two)
     shl mantissa, 9
     shr mantissa, 9
     
-    cmp exponent_lower, word ptr [ebp + 10] 
+    cmp exponent_lower, shift
         jge _ok
         mov target, 0
         jmp _epilogue
 _ok:
-    sub exponent_lower, word ptr [ebp + 10] 
+    sub exponent_lower, shift
     mov target, exponent
     shl target, 23
     shl sign, 31
@@ -553,8 +555,13 @@ float_power_2_mult proc ; (uint32 [float] target; uint16 power_of_two)
     sub esp, 8
     
     target equ eax
+    shift equ word ptr [ebp + 10]
+    
     mov target, dword ptr [EBP + 6]
     cmp target, 0
+    je _epilogue
+    
+    cmp shift, 0
     je _epilogue
     
     sign     equ dword ptr [EBP - 4]
@@ -573,7 +580,7 @@ float_power_2_mult proc ; (uint32 [float] target; uint16 power_of_two)
     shl mantissa, 9
     shr mantissa, 9
     
-    add exponent_lower, word ptr [ebp + 10]
+    add exponent_lower, shift
     cmp exponent, 255
         jle _exp_is_bounded
         mov target, 07f800000h 
@@ -597,7 +604,7 @@ float_mul proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
     push ebp
     mov ebp, esp
     
-    sub esp, 24
+    sub esp, 28
 
     push EBX
     push EDI
@@ -629,6 +636,8 @@ _right_not_trivial:
     right_sign     equ dword ptr [EBP - 16]
     right_exponent equ dword ptr [EBP - 20]
     right_mantissa equ dword ptr [EBP - 24]
+    
+    old_left_mantissa equ dword ptr [EBP - 28]
 
     mov left_sign, left
     shr left_sign, 31
@@ -651,26 +660,40 @@ _right_not_trivial:
     mov right_mantissa, right
     shl right_mantissa, 9
     shr right_mantissa, 9
-_init_done:   
+    or right_mantissa, 0800000h ; 1 << 23
     
+    mov old_left_mantissa, 03f800000h
+    or  old_left_mantissa, left_mantissa
+_init_done:   
     mov edi, left_exponent
     add edi, right_exponent 
     
-    mov esi, 03f800000h ; exponent = 2^0
-    add esi, left_mantissa
+    new_mantissa equ esi
+    mov new_mantissa old_left_mantissa
+_while:
+    cmp right_mantissa, 0
+    je _while_done
     
+    mov buffer, right_mantissa
+    and buffer, 1
+    cmp buffer, 0
+    je _after_addition
     
-    
-    
-    
+    mov buffer, new_mantissa
+
+    push ecx 
+    push edx
+    push 1
+    push buffer
+    call float_power_2_mult
+    push edx
+    push ecx 
     
 
-    
 
-    
-    
-    
-    
+_after_addition:
+    shr right_mantissa, 1
+_while_done:
 
 _epilogue:
     pop esi
