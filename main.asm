@@ -498,7 +498,192 @@ _epilogue:
     pop ebp
     ret
 float_add endp
+    
+; fast power-of-two division (power >= 0)
+float_power_2_div proc ; (uint32 [float] target; uint16 power_of_two)
+    push ebp
+    mov ebp, esp
+    
+    sub esp, 8
+    
+    target equ eax
+    mov target, dword ptr [EBP + 6]
+    cmp target, 0
+    je _epilogue
+    
+    sign     equ dword ptr [EBP - 4]
+    exponent equ ecx
+    exponent_lower equ cx
+    mantissa equ dword ptr [EBP - 8]
 
+    mov sign, target
+    shr sign, 31
+    
+    mov exponent, target
+    shl exponent, 1
+    shr exponent, 24
+    
+    mov mantissa, target
+    shl mantissa, 9
+    shr mantissa, 9
+    
+    cmp exponent_lower, word ptr [ebp + 10] 
+        jge _ok
+        mov target, 0
+        jmp _epilogue
+_ok:
+    sub exponent_lower, word ptr [ebp + 10] 
+    mov target, exponent
+    shl target, 23
+    shl sign, 31
+    or target, sign
+    or target, mantissa
+    
+_epilogue: 
+    mov esp, ebp
+    pop ebp
+    ret
+float_power_2_mult endp
+    
+; fast power-of-two multiplication (power >= 0)
+float_power_2_mult proc ; (uint32 [float] target; uint16 power_of_two)
+    push ebp
+    mov ebp, esp
+    
+    sub esp, 8
+    
+    target equ eax
+    mov target, dword ptr [EBP + 6]
+    cmp target, 0
+    je _epilogue
+    
+    sign     equ dword ptr [EBP - 4]
+    exponent equ ecx
+    exponent_lower equ cx
+    mantissa equ dword ptr [EBP - 8]
+
+    mov sign, target
+    shr sign, 31
+    
+    mov exponent, target
+    shl exponent, 1
+    shr exponent, 24
+    
+    mov mantissa, target
+    shl mantissa, 9
+    shr mantissa, 9
+    
+    add exponent_lower, word ptr [ebp + 10]
+    cmp exponent, 255
+        jle _exp_is_bounded
+        mov target, 07f800000h 
+        shl sign, 31
+        or target, sign
+        jmp _epilogue
+
+_exp_is_bounded:
+    mov target, exponent
+    shl target, 23
+    shl sign, 31
+    or target, sign
+    or target, mantissa
+_epilogue: 
+    mov esp, ebp
+    pop ebp
+    ret
+float_power_2_mult endp
+
+float_mul proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
+    push ebp
+    mov ebp, esp
+    
+    sub esp, 24
+
+    push EBX
+    push EDI
+    push esi
+
+    left equ EBX
+    right equ EDX
+    buffer equ ECX
+
+    mov left, dword ptr [EBP + 6]
+    mov right, dword ptr [EBP + 10]
+
+    cmp left, 0
+    jne _left_not_trivial
+    mov eax, 0
+    jmp _epilogue
+
+_left_not_trivial:          
+    cmp right, 0
+    jne _right_not_trivial
+    mov eax, 0
+    jmp _epilogue
+
+_right_not_trivial:         
+    left_sign     equ dword ptr [EBP - 4]
+    left_exponent equ dword ptr [EBP - 8]
+    left_mantissa equ dword ptr [EBP - 12]
+    
+    right_sign     equ dword ptr [EBP - 16]
+    right_exponent equ dword ptr [EBP - 20]
+    right_mantissa equ dword ptr [EBP - 24]
+
+    mov left_sign, left
+    shr left_sign, 31
+    
+    mov left_exponent, left
+    shl left_exponent, 1
+    shr left_exponent, 24
+    
+    mov left_mantissa, left
+    shl left_mantissa, 9
+    shr left_mantissa, 9
+    
+    mov right_sign, right
+    shr right_sign, 31
+    
+    mov right_exponent, right
+    shl right_exponent, 1
+    shr right_exponent, 24
+    
+    mov right_mantissa, right
+    shl right_mantissa, 9
+    shr right_mantissa, 9
+_init_done:   
+    
+    mov edi, left_exponent
+    add edi, right_exponent 
+    
+    mov esi, 03f800000h ; exponent = 2^0
+    add esi, left_mantissa
+    
+    
+    
+    
+    
+    
+
+    
+
+    
+    
+    
+    
+
+_epilogue:
+    pop esi
+    pop EDI
+    pop EBX
+
+    mov esp, ebp
+    pop ebp
+    ret
+float_mul endp
+
+float_display proc
+float_display endp
 
 main proc
     mov    eax, data
