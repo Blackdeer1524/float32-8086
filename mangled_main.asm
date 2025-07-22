@@ -335,6 +335,109 @@ _error__parse_mantissa:
     call exit_invalid_char    
 parse_mantissa endp
 
+    
+float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
+    push ebp
+    mov ebp, esp
+    
+    sub esp, 24
+
+    left_sign__float_add     equ dword ptr [EBP - 4]
+    left_exponent__float_add equ dword ptr [EBP - 8]
+    left_mantissa__float_add equ dword ptr [EBP - 12]
+    
+    right_sign__float_add     equ dword ptr [EBP - 16]
+    right_exponent__float_add equ dword ptr [EBP - 20]
+    right_mantissa__float_add equ dword ptr [EBP - 24]
+    
+    mov left_sign__float_add, dword ptr [EBP + 6]
+    shr left_sign__float_add, 31
+    
+    mov left_exponent__float_add, dword ptr [EBP + 6]
+    shl left_exponent__float_add, 1
+    shr left_exponent__float_add, 24
+    
+    mov left_mantissa__float_add, dword ptr [EBP + 6]
+    shl left_mantissa__float_add, 9
+    shr left_mantissa__float_add, 9
+    
+    mov right_sign__float_add, dword ptr [EBP + 10]
+    shr right_sign__float_add, 31
+    
+    mov right_exponent__float_add, dword ptr [EBP + 10]
+    shl right_exponent__float_add, 1
+    shr right_exponent__float_add, 24
+    
+    mov right_mantissa__float_add, dword ptr [EBP + 10]
+    shl right_mantissa__float_add, 9
+    shr right_mantissa__float_add, 9
+    
+    cmp left_exponent__float_add, right_exponent__float_add
+        jge _left_exp_ge_right__float_add
+        xchg left_sign__float_add, right_sign__float_add
+        xchg left_exponent__float_add, right_exponent__float_add
+        xchg left_mantissa__float_add, right_mantissa__float_add
+
+    _left_exp_ge_right__float_add:
+    
+    sub esp, 4
+    
+    exp_diff__float_add equ dword ptr [EBP - 28]
+    mov exp_diff__float_add, left_exponent__float_add
+    sub exp_diff__float_add, right_exponent__float_add
+    
+    cmp exp_diff__float_add, 31
+        jle _exp_diff_is_at_most_31__float_add
+        ; return left
+        shl left_sign__float_add, 31
+        shl left_exponent__float_add, 23
+        mov eax, left_sign__float_add
+        or eax, left_exponent__float_add
+        or eax, left_mantissa__float_add
+        jmp _epilogue__float_add
+    
+    _exp_diff_is_at_most_31__float_add:
+    cmp left_sign__float_add, right_sign__float_add
+        jne _different_signs__float_add
+
+        or left_mantissa__float_add,  01000000h ; 1 << 24
+        or right_mantissa__float_add, 01000000h ; 1 << 24
+    
+
+        
+
+        
+
+        
+    
+    
+    
+    
+        
+
+        
+
+
+    
+    
+
+    _different_signs__float_add:
+    
+    
+
+    
+    
+    
+
+
+
+_epilogue__float_add:
+    mov esp, ebp
+    pop ebp
+    ret
+float_add endp
+
+
 main:     
     mov    eax, data
     mov    ds, eax

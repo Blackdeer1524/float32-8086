@@ -334,6 +334,167 @@ _decimal_part_outer_end:
 _error: 
     call exit_invalid_char    
 parse_mantissa endp
+    
+    
+float_abs_cmp proc ; (uint32 [float] left, uint32 [float] right)
+            push ebp
+            mov ebp, esp
+            
+            left equ ecx
+            mov left, dword ptr [ebp + 6]
+
+            right equ edx
+            mov right, dword ptr [ebp + 10]
+    
+            cmp left, right
+
+_epilogue:  mov esp, ebp
+            pop ebp
+            ret
+float_abs_cmp endp
+
+
+float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
+                            push ebp
+                            mov ebp, esp
+                            
+                            sub esp, 28
+                            
+                            push EBX
+                            push EDI
+                            push ESI 
+                            
+                            left equ EBX
+                            right equ EDX
+                            buffer equ ECX
+                            
+                            mov left, dword ptr [EBP + 6]
+                            mov right, dword ptr [EBP + 10]
+    
+                            cmp left, 0
+                            jne _left_not_trivial
+                            mov eax, right
+                            jmp _epilogue
+
+_left_not_trivial:          cmp right, 0
+                            jne _right_not_trivial
+                            mov eax, left
+                            jmp _epilogue
+
+_right_not_trivial:         left_sign     equ dword ptr [EBP - 4]
+                            left_exponent equ dword ptr [EBP - 8]
+                            left_mantissa equ dword ptr [EBP - 12]
+                            
+                            right_sign     equ dword ptr [EBP - 16]
+                            right_exponent equ dword ptr [EBP - 20]
+                            right_mantissa equ dword ptr [EBP - 24]
+    
+                            mov left_sign, left
+                            shr left_sign, 31
+                            
+                            mov left_exponent, left
+                            shl left_exponent, 1
+                            shr left_exponent, 24
+                            
+                            mov left_mantissa, left
+                            shl left_mantissa, 9
+                            shr left_mantissa, 9
+                            
+                            mov right_sign, right
+                            shr right_sign, 31
+                            
+                            mov right_exponent, right
+                            shl right_exponent, 1
+                            shr right_exponent, 24
+                            
+                            mov right_mantissa, right
+                            shl right_mantissa, 9
+                            shr right_mantissa, 9
+
+              _init_done:   mov EDI, left
+                            shr edi, 1
+                            shl edi 1
+
+                            mov ESI, right
+                            shr esi, 1
+                            shl esi 1
+                            
+                            cmp edi, esi
+                            jge _left_exp_ge_right
+                            xchg left, right
+                            xchg left_sign, right_sign
+                            xchg left_exponent, right_exponent
+                            xchg left_mantissa, right_mantissa
+
+      _left_exp_ge_right:   exp_diff equ dword ptr [EBP - 28]
+                            mov exp_diff, left_exponent
+                            sub exp_diff, right_exponent
+    
+                            cmp exp_diff, 31
+                            jle _exp_diff_is_at_most_31
+                            mov eax, left
+                            jmp _epilogue
+    
+_exp_diff_is_at_most_31:    or left_mantissa,  0800000h ; 1 << 23
+                            or right_mantissa, 0800000h ; 1 << 23
+                                        
+                            mov buffer, exp_diff
+                            shr right_mantissa, cl
+                            cmp left_sign, right_sign                            
+                            jne _diff_signs 
+
+                            mov eax left_mantissa
+            _same_signs:                add eax, right_mantissa
+                                        cmp eax, 01000000h ; 1 << 24 = 10 << 23
+                                        jl _not_greater_2 
+                                        inc left_exponent
+                                        shr eax
+
+                        _not_greater_2: shl left_sign, 31
+                                        shl left_exponent, 23
+                                        or eax, left_sign
+                                        or eax, left_exponent
+                                        jmp _epilogue
+
+            _diff_signs:                sub eax, right_mantissa
+                                        cmp eax, 0
+                                        je _epilogue
+
+                                _while: mov buffer, eax
+                                        and buffer, 
+                            _while_end: 
+                                                
+
+                                                
+                                        
+
+                
+                
+            
+                
+                
+                
+                
+                
+    
+    
+
+    
+    
+    
+
+
+
+_epilogue:
+    pop ESI
+    pop EDI
+    pop EBX
+
+    mov esp, ebp
+    pop ebp
+    ret
+float_add endp
+
 
 main:     
     mov    eax, data
