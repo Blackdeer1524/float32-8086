@@ -5,9 +5,13 @@ data segment use16
     ;input_buf db 26         ;MAX NUMBER OF CHARACTERS ALLOWED (25).
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
-    input_str db (input_EOF - $ - 1)
-              db "0.1"
-    input_EOF db "$"
+    first_str db (first_EOF - $ - 1)
+              db "0.5"
+    first_EOF db "$"
+    
+    second_str db (second_EOF - $ - 1)
+              db "0.5"
+    second_EOF db "$"
 
     err_unexpected_chr db "Invalid symbol in number"
 data ends
@@ -167,9 +171,6 @@ _loop2__parse_float:
     jmp _loop2__parse_float
     
 _loop2_end__parse_float:
-    cmp mantissa__parse_float, 0
-    je _epilogue__parse_float
-    
     add exponent__parse_float, 127
     shl exponent__parse_float, 24
     shr exponent__parse_float, 1
@@ -293,13 +294,10 @@ _decimal_part_inner_end__parse_mantissa:
         cmp still_skipping_flag__parse_mantissa, 1
             jne _after_still_skipping_flag__parse_mantissa
             cmp carry__parse_mantissa, 0
-                jne _carry_is_not_zero__parse_mantissa
-                dec iteration_count__parse_mantissa
-                dec dword ptr ss:[exponent_ptr__parse_mantissa]
-                jmp _decimal_part_outer_start__parse_mantissa
+                je _carry_cmp_done__parse_mantissa
+                mov still_skipping_flag__parse_mantissa, 0
         
-            _carry_is_not_zero__parse_mantissa:
-            mov still_skipping_flag__parse_mantissa, 0
+            _carry_cmp_done__parse_mantissa:
             dec iteration_count__parse_mantissa
             dec dword ptr ss:[exponent_ptr__parse_mantissa]
             jmp _decimal_part_outer_start__parse_mantissa
@@ -312,9 +310,15 @@ _decimal_part_inner_end__parse_mantissa:
         jmp _decimal_part_outer_start__parse_mantissa
 
     _no_decimal_part_left__parse_mantissa:
-        cmp carry__parse_mantissa, 1
-        jne _decimal_part_outer_end__parse_mantissa
+        cmp carry__parse_mantissa, 0
+        je _decimal_part_outer_end__parse_mantissa
 
+        cmp still_skipping_flag__parse_mantissa, 1
+            jne _after_still_skipping_flag_no_decimal__parse_mantissa
+            dec dword ptr ss:[exponent_ptr__parse_mantissa]
+            jmp _decimal_part_outer_end__parse_mantissa
+            
+        _after_still_skipping_flag_no_decimal__parse_mantissa:
         shl carry__parse_mantissa, CL
         dec CL
         
@@ -482,16 +486,52 @@ _epilogue__float_add:
 float_add endp
 
 
-main:     
+main proc
     mov    eax, data
     mov    ds, eax
-
-    push offset input_str + 1 
-    push [input_str] 
+    
+    mov ebp, esp 
+    mov eax, 0
+    push eax
+    push eax
+    
+    left__main equ dword ptr [ebp - 4]
+    right__main equ dword ptr [ebp - 8]
+    
+    ; ============================
+    push offset first_str + 1 
+    
+    xor dx, dx
+    mov dl, byte ptr [first_str] 
+    push dx
     call parse_float
+    sub esp, 4
+    
+    mov left__main, eax
 
+    ; ============================
+    push offset second_str + 1 
+    
+    xor dx, dx
+    mov dl, byte ptr [second_str] 
+    push dx
+    call parse_float
+    add esp, 4
+    
+    mov right__main, eax
+    ; ============================
+    
+    mov eax, right__main
+    push right__main
+    mov eax, left__main
+    push left__main
+    call float_add
+    add esp, 8
+    
     xor    eax, eax
     mov    ah, 4Ch
     int    21h
+main endp
+
 code ends
 end main

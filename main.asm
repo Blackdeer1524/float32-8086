@@ -171,9 +171,6 @@ _loop2:
     jmp _loop2
     
 _loop2_end:
-    cmp mantissa, 0
-    je _epilogue
-    
     add exponent, 127
     shl exponent, 24
     shr exponent, 1
@@ -297,13 +294,10 @@ _decimal_part_inner_end:
         cmp still_skipping_flag, 1
             jne _after_still_skipping_flag
             cmp carry, 0
-                jne _carry_is_not_zero
-                dec iteration_count
-                dec dword ptr ss:[exponent_ptr]
-                jmp _decimal_part_outer_start
+                je _carry_cmp_done
+                mov still_skipping_flag, 0
         
-            _carry_is_not_zero:
-            mov still_skipping_flag, 0
+            _carry_cmp_done:
             dec iteration_count
             dec dword ptr ss:[exponent_ptr]
             jmp _decimal_part_outer_start
@@ -316,9 +310,15 @@ _decimal_part_inner_end:
         jmp _decimal_part_outer_start
 
     _no_decimal_part_left:
-        cmp carry, 1
-        jne _decimal_part_outer_end
+        cmp carry, 0
+        je _decimal_part_outer_end
 
+        cmp still_skipping_flag, 1
+            jne _after_still_skipping_flag_no_decimal
+            dec dword ptr ss:[exponent_ptr]
+            jmp _decimal_part_outer_end
+            
+        _after_still_skipping_flag_no_decimal:
         shl carry, CL
         dec CL
         
@@ -491,7 +491,9 @@ main proc
     mov    ds, eax
     
     mov ebp, esp 
-    sub esp, 8
+    mov eax, 0
+    push eax
+    push eax
     
     left equ dword ptr [ebp - 4]
     right equ dword ptr [ebp - 8]
@@ -501,21 +503,30 @@ main proc
     
     xor dx, dx
     mov dl, byte ptr [first_str] 
-    push dl
+    push dx
     call parse_float
-    
     sub esp, 4
+    
+    mov left, eax
+
     ; ============================
-    push offset first_str + 1 
+    push offset second_str + 1 
     
     xor dx, dx
-    mov dl, byte ptr [first_str] 
-    push dl
+    mov dl, byte ptr [second_str] 
+    push dx
     call parse_float
+    add esp, 4
     
-    sub esp, 4
+    mov right, eax
     ; ============================
-
+    
+    mov eax, right
+    push right
+    mov eax, left
+    push left
+    call float_add
+    add esp, 8
     
     xor    eax, eax
     mov    ah, 4Ch
