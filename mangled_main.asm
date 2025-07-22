@@ -120,10 +120,10 @@ _found_dot__parse_float:
     add ebp, 12
     
     cmp whole_part__parse_float, 0
-        jle _whole_part_is_le_one__parse_float 
+        jle _whole_part_is_empty__parse_float 
         push 0
         jmp _done_whole_part_cmp__parse_float
-    _whole_part_is_le_one__parse_float:
+    _whole_part_is_empty__parse_float:
         push 1
         jmp _done_whole_part_cmp__parse_float
     _done_whole_part_cmp__parse_float:

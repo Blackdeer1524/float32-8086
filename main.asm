@@ -120,10 +120,10 @@ _found_dot:
     add ebp, 12
     
     cmp whole_part, 0
-        jle _whole_part_is_le_one 
+        jle _whole_part_is_empty 
         push 0
         jmp _done_whole_part_cmp
-    _whole_part_is_le_one:
+    _whole_part_is_empty:
         push 1
         jmp _done_whole_part_cmp
     _done_whole_part_cmp:
