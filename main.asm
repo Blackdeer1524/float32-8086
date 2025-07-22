@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     first_str db (first_EOF - $ - 1)
-              db "0.5"
+              db "0.1"
     first_EOF db "$"
     
     second_str db (second_EOF - $ - 1)
@@ -357,124 +357,136 @@ cmp_memory macro left, right, tmp_reg
 endm
 
 float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
-                            push ebp
-                            mov ebp, esp
-                            
-                            sub esp, 28
-                            
-                            push EBX
-                            push EDI
-                            push ESI 
-                            
-                            left equ EBX
-                            right equ EDX
-                            buffer equ ECX
-                            
-                            mov left, dword ptr [EBP + 6]
-                            mov right, dword ptr [EBP + 10]
-    
-                            cmp left, 0
-                            jne _left_not_trivial
-                            mov eax, right
-                            jmp _epilogue
+    push ebp
+    mov ebp, esp
 
-_left_not_trivial:          cmp right, 0
-                            jne _right_not_trivial
-                            mov eax, left
-                            jmp _epilogue
+    sub esp, 28
+
+    push EBX
+    push EDI
+    push ESI 
+
+    left equ EBX
+    right equ EDX
+    buffer equ ECX
+
+    mov left, dword ptr [EBP + 6]
+    mov right, dword ptr [EBP + 10]
+
+    cmp left, 0
+    jne _left_not_trivial
+    mov eax, right
+    jmp _epilogue
+
+_left_not_trivial:          
+    cmp right, 0
+    jne _right_not_trivial
+    mov eax, left
+    jmp _epilogue
 
 _right_not_trivial:         
-                            left_sign     equ dword ptr [EBP - 4]
-                            left_exponent equ dword ptr [EBP - 8]
-                            left_mantissa equ dword ptr [EBP - 12]
-                            
-                            right_sign     equ dword ptr [EBP - 16]
-                            right_exponent equ dword ptr [EBP - 20]
-                            right_mantissa equ dword ptr [EBP - 24]
+    left_sign     equ dword ptr [EBP - 4]
+    left_exponent equ dword ptr [EBP - 8]
+    left_mantissa equ dword ptr [EBP - 12]
     
-                            mov left_sign, left
-                            shr left_sign, 31
-                            
-                            mov left_exponent, left
-                            shl left_exponent, 1
-                            shr left_exponent, 24
-                            
-                            mov left_mantissa, left
-                            shl left_mantissa, 9
-                            shr left_mantissa, 9
-                            
-                            mov right_sign, right
-                            shr right_sign, 31
-                            
-                            mov right_exponent, right
-                            shl right_exponent, 1
-                            shr right_exponent, 24
-                            
-                            mov right_mantissa, right
-                            shl right_mantissa, 9
-                            shr right_mantissa, 9
+    right_sign     equ dword ptr [EBP - 16]
+    right_exponent equ dword ptr [EBP - 20]
+    right_mantissa equ dword ptr [EBP - 24]
 
-              _init_done:   mov EDI, left
-                            shr edi, 1
-                            shl edi, 1
-
-                            mov ESI, right
-                            shr esi, 1
-                            shl esi, 1
-                            
-                            cmp edi, esi
-                            jge _left_exp_ge_right
-                            xchg left, right
-
-                            exchange_memory left_sign,     right_sign,     buffer
-                            exchange_memory left_exponent, right_exponent, buffer
-                            exchange_memory left_mantissa, right_mantissa, buffer
-
-      _left_exp_ge_right:   mov buffer, left_exponent
-                            sub buffer, right_exponent
+    mov left_sign, left
+    shr left_sign, 31
     
-                            cmp buffer, 31
-                            jle _exp_diff_is_at_most_31
-                            mov eax, left
-                            jmp _epilogue
+    mov left_exponent, left
+    shl left_exponent, 1
+    shr left_exponent, 24
     
-_exp_diff_is_at_most_31:    or left_mantissa,  0800000h ; 1 << 23
-                            or right_mantissa, 0800000h ; 1 << 23
-                                        
-                            shr right_mantissa, cl
-                            cmp_memory left_sign, right_sign, buffer
-                            jne _diff_signs 
+    mov left_mantissa, left
+    shl left_mantissa, 9
+    shr left_mantissa, 9
+    
+    mov right_sign, right
+    shr right_sign, 31
+    
+    mov right_exponent, right
+    shl right_exponent, 1
+    shr right_exponent, 24
+    
+    mov right_mantissa, right
+    shl right_mantissa, 9
+    shr right_mantissa, 9
 
-                            mov eax, left_mantissa
-            _same_signs:                add eax, right_mantissa
-                                        cmp eax, 01000000h ; 1 << 24 = 10 << 23
-                                        jl _not_greater_2 
-                                        inc left_exponent
-                                        shr eax, 1
+_init_done:   
+    mov EDI, left
+    shr edi, 1
+    shl edi, 1
 
-                        _not_greater_2: shl left_sign, 31
-                                        shl left_exponent, 23
-                                        or eax, left_sign
-                                        or eax, left_exponent
-                                        jmp _epilogue
+    mov ESI, right
+    shr esi, 1
+    shl esi, 1
 
-            _diff_signs:                sub eax, right_mantissa
-                                        cmp eax, 0
-                                        je _epilogue
+    cmp edi, esi
+    jge _left_exp_ge_right
+    xchg left, right
 
-                                _while: mov buffer, eax
-                                        and buffer, 0800000h ; 1 << 23. 
-                                        cmp buffer, 0
-                                        jg _while_end
-                                        shl eax, 1
-                                        jmp _while
+    exchange_memory left_sign,     right_sign,     buffer
+    exchange_memory left_exponent, right_exponent, buffer
+    exchange_memory left_mantissa, right_mantissa, buffer
 
-                            _while_end: xor eax, 0800000h
-                                        shl left_sign, 31
-                                        shl left_exponent, 23
-                                        or eax, left_sign
-                                        or eax, left_exponent
-                                        jmp _epilogue
+_left_exp_ge_right:   
+    mov buffer, left_exponent
+    sub buffer, right_exponent
+
+    cmp buffer, 24
+    jle _exp_diff_is_at_most_24
+    mov eax, left
+    jmp _epilogue
+    
+_exp_diff_is_at_most_24:    
+    or left_mantissa,  0800000h ; 1 << 23
+    or right_mantissa, 0800000h ; 1 << 23
+                
+    shr right_mantissa, cl
+    cmp_memory left_sign, right_sign, buffer
+    jne _diff_signs 
+
+_same_signs:
+    mov eax, left_mantissa
+    add eax, right_mantissa
+    cmp eax, 01000000h ; 1 << 24 = 10 << 23
+        jl _not_greater_2 
+        inc left_exponent
+        shr eax, 1
+
+    _not_greater_2: 
+    xor eax, 0800000h
+
+    shl left_sign, 31
+    shl left_exponent, 23
+    or eax, left_sign
+    or eax, left_exponent
+    jmp _epilogue
+
+_diff_signs:                
+    sub eax, right_mantissa
+    cmp eax, 0
+    je _epilogue
+
+    _while: 
+        mov buffer, eax
+        and buffer, 0800000h ; 1 << 23. 
+        cmp buffer, 0
+        jg _while_end
+        shl eax, 1
+        jmp _while
+
+_while_end: 
+    xor eax, 0800000h
+    shl left_sign, 31
+    shl left_exponent, 23
+    or eax, left_sign
+    or eax, left_exponent
+    jmp _epilogue
+
 _epilogue:
     pop ESI
     pop EDI
