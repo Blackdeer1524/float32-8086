@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     input_str db (input_EOF - $ - 1)
-              db "3.1"
+              db "0.1"
     input_EOF db "$"
 
     err_unexpected_chr db "Invalid symbol in number"
@@ -54,10 +54,10 @@ parse_float proc ; (uint16 len, char *str)
     push ebp
     mov ebp, esp
     
-    sub ESP, 9;
+    sub ESP, 12;
     mov dword ptr [EBP - 4], 0 ; sign data
     mov dword ptr [EBP - 8], 0 ; mantissa buffer
-    mov dword ptr [EBP - 9], 0 ; additional exponent
+    mov dword ptr [EBP - 12], 0 ; additional exponent
     
     ; callee-safe registers
     push bx
@@ -115,15 +115,15 @@ _found_dot:
     push whole_part
     push mantissa
     
-    sub ebp, 9
+    sub ebp, 12
     push ebp
-    add ebp, 9
+    add ebp, 12
     
     cmp whole_part, 0
-        je _whole_part_is_zero
+        jle _whole_part_is_le_one 
         push 0
         jmp _done_whole_part_cmp
-    _whole_part_is_zero:
+    _whole_part_is_le_one:
         push 1
         jmp _done_whole_part_cmp
     _done_whole_part_cmp:
@@ -139,10 +139,10 @@ _found_dot:
     pop len
     pop str_ptr
     
-    sub esp, 2
-    sub esp, 4
+    add esp, 2
+    add esp, 4
 
-    mov exponent, dword ptr [ebp - 9]
+    mov exponent, dword ptr [ebp - 12]
 
     pop mantissa
     mov mantissa, eax
@@ -200,10 +200,7 @@ parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stac
     mov ebp, esp
     
     sub ESP, 2
-    
-    still_skipping_flag equ byte ptr [ebp + 6 + 4]
-    mov still_skipping_flag, 1 
-    
+     
     push bx
     push si
     push edi
@@ -216,8 +213,11 @@ parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stac
     str_ptr EQU bx
     mov str_ptr, WORD PTR [EBP + 6 + 2]  ; str_ptr. points after a dot symbol
     
+    still_skipping_flag equ word ptr [ebp + 6 + 4]
+    
     exponent_ptr equ EDI
     mov exponent_ptr, DWORD PTR [EBP + 6 + 6]
+    mov dword ptr [exponent_ptr], 0
     
     MAX_MANTISSA_SIZE = 23
     cmp len, MAX_MANTISSA_SIZE 
@@ -295,12 +295,14 @@ _decimal_part_inner_end:
             cmp carry, 0
                 jne _carry_is_not_zero
                 dec iteration_count
-                dec dword ptr [exponent_ptr]
+                dec dword ptr ss:[exponent_ptr]
                 jmp _decimal_part_outer_start
-
+        
             _carry_is_not_zero:
             mov still_skipping_flag, 0
-            jmp _after_still_skipping_flag
+            dec iteration_count
+            dec dword ptr ss:[exponent_ptr]
+            jmp _decimal_part_outer_start
             
         _after_still_skipping_flag:
         shl carry, CL
@@ -316,7 +318,8 @@ _decimal_part_inner_end:
         shl carry, CL
         dec CL
         
-        or eax, carry 
+        or eax, carry
+
         jmp _decimal_part_outer_end 
 _decimal_part_outer_end:
     ; epilogue
@@ -324,8 +327,6 @@ _decimal_part_outer_end:
     pop si
     pop bx
     
-    ADD ESP, 2
-
     mov esp, ebp
     pop ebp
     ret

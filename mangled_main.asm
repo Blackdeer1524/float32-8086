@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     input_str db (input_EOF - $ - 1)
-              db "3.1"
+              db "0.1"
     input_EOF db "$"
 
     err_unexpected_chr db "Invalid symbol in number"
@@ -54,10 +54,10 @@ parse_float proc ; (uint16 len, char *str)
     push ebp
     mov ebp, esp
     
-    sub ESP, 9;
+    sub ESP, 12;
     mov dword ptr [EBP - 4], 0 ; sign data
     mov dword ptr [EBP - 8], 0 ; mantissa buffer
-    mov dword ptr [EBP - 9], 0 ; additional exponent
+    mov dword ptr [EBP - 12], 0 ; additional exponent
     
     ; callee-safe registers
     push bx
@@ -115,15 +115,15 @@ _found_dot__parse_float:
     push whole_part__parse_float
     push mantissa__parse_float
     
-    sub ebp, 9
+    sub ebp, 12
     push ebp
-    add ebp, 9
+    add ebp, 12
     
     cmp whole_part__parse_float, 0
-        je _whole_part_is_zero__parse_float
+        jle _whole_part_is_le_one__parse_float 
         push 0
         jmp _done_whole_part_cmp__parse_float
-    _whole_part_is_zero__parse_float:
+    _whole_part_is_le_one__parse_float:
         push 1
         jmp _done_whole_part_cmp__parse_float
     _done_whole_part_cmp__parse_float:
@@ -139,10 +139,10 @@ _found_dot__parse_float:
     pop len__parse_float
     pop str_ptr__parse_float
     
-    sub esp, 2
-    sub esp, 4
+    add esp, 2
+    add esp, 4
 
-    mov exponent__parse_float, dword ptr [ebp - 9]
+    mov exponent__parse_float, dword ptr [ebp - 12]
 
     pop mantissa__parse_float
     mov mantissa__parse_float, eax
@@ -200,10 +200,7 @@ parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stac
     mov ebp, esp
     
     sub ESP, 2
-    
-    still_skipping_flag__parse_mantissa equ byte ptr [ebp + 6 + 4]
-    mov still_skipping_flag__parse_mantissa, 1 
-    
+     
     push bx
     push si
     push edi
@@ -216,8 +213,11 @@ parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stac
     str_ptr__parse_mantissa EQU bx
     mov str_ptr__parse_mantissa, WORD PTR [EBP + 6 + 2]  ; str_ptr__parse_mantissa. points after a dot symbol
     
+    still_skipping_flag__parse_mantissa equ word ptr [ebp + 6 + 4]
+    
     exponent_ptr__parse_mantissa equ EDI
     mov exponent_ptr__parse_mantissa, DWORD PTR [EBP + 6 + 6]
+    mov dword ptr [exponent_ptr__parse_mantissa], 0
     
     MAX_MANTISSA_SIZE__parse_mantissa = 23
     cmp len__parse_mantissa, MAX_MANTISSA_SIZE__parse_mantissa 
@@ -290,17 +290,19 @@ _decimal_part_inner_end__parse_mantissa:
     cmp has_decimal_part__parse_mantissa, 1
         jne _no_decimal_part_left__parse_mantissa
 
-        ; cmp still_skipping_flag__parse_mantissa, 1
-        ;     jne _after_still_skipping_flag__parse_mantissa
-        ;     cmp carry__parse_mantissa, 0
-        ;         jne _carry_is_not_zero__parse_mantissa
-        ;         dec iteration_count__parse_mantissa
-        ;         dec dword ptr [exponent_ptr__parse_mantissa]
-        ;         jmp _decimal_part_outer_start__parse_mantissa
-
-        ;     _carry_is_not_zero__parse_mantissa:
-        ;     mov still_skipping_flag__parse_mantissa, 0
-        ;     jmp _after_still_skipping_flag__parse_mantissa
+        cmp still_skipping_flag__parse_mantissa, 1
+            jne _after_still_skipping_flag__parse_mantissa
+            cmp carry__parse_mantissa, 0
+                jne _carry_is_not_zero__parse_mantissa
+                dec iteration_count__parse_mantissa
+                dec dword ptr ss:[exponent_ptr__parse_mantissa]
+                jmp _decimal_part_outer_start__parse_mantissa
+        
+            _carry_is_not_zero__parse_mantissa:
+            mov still_skipping_flag__parse_mantissa, 0
+            dec iteration_count__parse_mantissa
+            dec dword ptr ss:[exponent_ptr__parse_mantissa]
+            jmp _decimal_part_outer_start__parse_mantissa
             
         _after_still_skipping_flag__parse_mantissa:
         shl carry__parse_mantissa, CL
@@ -316,7 +318,8 @@ _decimal_part_inner_end__parse_mantissa:
         shl carry__parse_mantissa, CL
         dec CL
         
-        or eax, carry__parse_mantissa 
+        or eax, carry__parse_mantissa
+
         jmp _decimal_part_outer_end__parse_mantissa 
 _decimal_part_outer_end__parse_mantissa:
     ; epilogue
@@ -324,8 +327,6 @@ _decimal_part_outer_end__parse_mantissa:
     pop si
     pop bx
     
-    ADD ESP, 2
-
     mov esp, ebp
     pop ebp
     ret
