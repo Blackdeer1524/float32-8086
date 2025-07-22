@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     first_str db (first_EOF - $ - 1)
-              db "0.1"
+              db "-0.1"
     first_EOF db "$"
     
     second_str db (second_EOF - $ - 1)
@@ -467,6 +467,7 @@ _same_signs:
     jmp _epilogue
 
 _diff_signs:                
+    mov eax, left_mantissa
     sub eax, right_mantissa
     cmp eax, 0
     je _epilogue
@@ -477,6 +478,7 @@ _diff_signs:
         cmp buffer, 0
         jg _while_end
         shl eax, 1
+        dec left_exponent
         jmp _while
 
 _while_end: 
