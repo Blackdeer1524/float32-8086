@@ -5,9 +5,13 @@ data segment use16
     ;input_buf db 26         ;MAX NUMBER OF CHARACTERS ALLOWED (25).
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
-    input_str db (input_EOF - $ - 1)
-              db "0.1"
-    input_EOF db "$"
+    first_str db (first_EOF - $ - 1)
+              db "0.5"
+    first_EOF db "$"
+    
+    second_str db (second_EOF - $ - 1)
+              db "0.5"
+    second_EOF db "$"
 
     err_unexpected_chr db "Invalid symbol in number"
 data ends
@@ -335,24 +339,22 @@ _error:
     call exit_invalid_char    
 parse_mantissa endp
     
+
+exchange_memory macro left, right, tmp_reg
+    mov tmp_reg, left
+    xchg tmp_reg, right
+    mov left, tmp_reg
+endm
     
-float_abs_cmp proc ; (uint32 [float] left, uint32 [float] right)
-            push ebp
-            mov ebp, esp
-            
-            left equ ecx
-            mov left, dword ptr [ebp + 6]
+mov_memory macro left, right, tmp_reg
+    mov tmp_reg, right
+    mov left, tmp_reg
+endm
 
-            right equ edx
-            mov right, dword ptr [ebp + 10]
-    
-            cmp left, right
-
-_epilogue:  mov esp, ebp
-            pop ebp
-            ret
-float_abs_cmp endp
-
+cmp_memory macro left, right, tmp_reg
+    mov tmp_reg, left
+    cmp tmp_reg, right
+endm
 
 float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
                             push ebp
@@ -381,7 +383,8 @@ _left_not_trivial:          cmp right, 0
                             mov eax, left
                             jmp _epilogue
 
-_right_not_trivial:         left_sign     equ dword ptr [EBP - 4]
+_right_not_trivial:         
+                            left_sign     equ dword ptr [EBP - 4]
                             left_exponent equ dword ptr [EBP - 8]
                             left_mantissa equ dword ptr [EBP - 12]
                             
@@ -413,24 +416,24 @@ _right_not_trivial:         left_sign     equ dword ptr [EBP - 4]
 
               _init_done:   mov EDI, left
                             shr edi, 1
-                            shl edi 1
+                            shl edi, 1
 
                             mov ESI, right
                             shr esi, 1
-                            shl esi 1
+                            shl esi, 1
                             
                             cmp edi, esi
                             jge _left_exp_ge_right
                             xchg left, right
-                            xchg left_sign, right_sign
-                            xchg left_exponent, right_exponent
-                            xchg left_mantissa, right_mantissa
 
-      _left_exp_ge_right:   exp_diff equ dword ptr [EBP - 28]
-                            mov exp_diff, left_exponent
-                            sub exp_diff, right_exponent
+                            exchange_memory left_sign,     right_sign,     buffer
+                            exchange_memory left_exponent, right_exponent, buffer
+                            exchange_memory left_mantissa, right_mantissa, buffer
+
+      _left_exp_ge_right:   mov buffer, left_exponent
+                            sub buffer, right_exponent
     
-                            cmp exp_diff, 31
+                            cmp buffer, 31
                             jle _exp_diff_is_at_most_31
                             mov eax, left
                             jmp _epilogue
@@ -438,17 +441,16 @@ _right_not_trivial:         left_sign     equ dword ptr [EBP - 4]
 _exp_diff_is_at_most_31:    or left_mantissa,  0800000h ; 1 << 23
                             or right_mantissa, 0800000h ; 1 << 23
                                         
-                            mov buffer, exp_diff
                             shr right_mantissa, cl
-                            cmp left_sign, right_sign                            
+                            cmp_memory left_sign, right_sign, buffer
                             jne _diff_signs 
 
-                            mov eax left_mantissa
+                            mov eax, left_mantissa
             _same_signs:                add eax, right_mantissa
                                         cmp eax, 01000000h ; 1 << 24 = 10 << 23
                                         jl _not_greater_2 
                                         inc left_exponent
-                                        shr eax
+                                        shr eax, 1
 
                         _not_greater_2: shl left_sign, 31
                                         shl left_exponent, 23
@@ -461,30 +463,18 @@ _exp_diff_is_at_most_31:    or left_mantissa,  0800000h ; 1 << 23
                                         je _epilogue
 
                                 _while: mov buffer, eax
-                                        and buffer, 
-                            _while_end: 
-                                                
+                                        and buffer, 0800000h ; 1 << 23. 
+                                        cmp buffer, 0
+                                        jg _while_end
+                                        shl eax, 1
+                                        jmp _while
 
-                                                
-                                        
-
-                
-                
-            
-                
-                
-                
-                
-                
-    
-    
-
-    
-    
-    
-
-
-
+                            _while_end: xor eax, 0800000h
+                                        shl left_sign, 31
+                                        shl left_exponent, 23
+                                        or eax, left_sign
+                                        or eax, left_exponent
+                                        jmp _epilogue
 _epilogue:
     pop ESI
     pop EDI
@@ -496,21 +486,41 @@ _epilogue:
 float_add endp
 
 
-main:     
+main proc
     mov    eax, data
     mov    ds, eax
-
-
-    mov dx, offset input_str + 1
-    push dx
-
+    
+    mov ebp, esp 
+    sub esp, 8
+    
+    left equ dword ptr [ebp - 4]
+    right equ dword ptr [ebp - 8]
+    
+    ; ============================
+    push offset first_str + 1 
+    
     xor dx, dx
-    mov dl, [input_str]
-    push dx
+    mov dl, byte ptr [first_str] 
+    push dl
     call parse_float
+    
+    sub esp, 4
+    ; ============================
+    push offset first_str + 1 
+    
+    xor dx, dx
+    mov dl, byte ptr [first_str] 
+    push dl
+    call parse_float
+    
+    sub esp, 4
+    ; ============================
 
+    
     xor    eax, eax
     mov    ah, 4Ch
     int    21h
+main endp
+
 code ends
 end main

@@ -334,104 +334,148 @@ _decimal_part_outer_end__parse_mantissa:
 _error__parse_mantissa: 
     call exit_invalid_char    
 parse_mantissa endp
-
     
+
+exchange_memory macro left, right, tmp_reg
+    mov tmp_reg, left
+    xchg tmp_reg, right
+    mov left, tmp_reg
+endm
+    
+mov_memory macro left, right, tmp_reg
+    mov tmp_reg, right
+    mov left, tmp_reg
+endm
+
+cmp_memory macro left, right, tmp_reg
+    mov tmp_reg, left
+    cmp tmp_reg, right
+endm
+
 float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
-    push ebp
-    mov ebp, esp
+                            push ebp
+                            mov ebp, esp
+                            
+                            sub esp, 28
+                            
+                            push EBX
+                            push EDI
+                            push ESI 
+                            
+                            left__float_add equ EBX
+                            right__float_add equ EDX
+                            buffer__float_add equ ECX
+                            
+                            mov left__float_add, dword ptr [EBP + 6]
+                            mov right__float_add, dword ptr [EBP + 10]
     
-    sub esp, 24
+                            cmp left__float_add, 0
+                            jne _left_not_trivial__float_add
+                            mov eax, right__float_add
+                            jmp _epilogue__float_add
 
-    left_sign__float_add     equ dword ptr [EBP - 4]
-    left_exponent__float_add equ dword ptr [EBP - 8]
-    left_mantissa__float_add equ dword ptr [EBP - 12]
-    
-    right_sign__float_add     equ dword ptr [EBP - 16]
-    right_exponent__float_add equ dword ptr [EBP - 20]
-    right_mantissa__float_add equ dword ptr [EBP - 24]
-    
-    mov left_sign__float_add, dword ptr [EBP + 6]
-    shr left_sign__float_add, 31
-    
-    mov left_exponent__float_add, dword ptr [EBP + 6]
-    shl left_exponent__float_add, 1
-    shr left_exponent__float_add, 24
-    
-    mov left_mantissa__float_add, dword ptr [EBP + 6]
-    shl left_mantissa__float_add, 9
-    shr left_mantissa__float_add, 9
-    
-    mov right_sign__float_add, dword ptr [EBP + 10]
-    shr right_sign__float_add, 31
-    
-    mov right_exponent__float_add, dword ptr [EBP + 10]
-    shl right_exponent__float_add, 1
-    shr right_exponent__float_add, 24
-    
-    mov right_mantissa__float_add, dword ptr [EBP + 10]
-    shl right_mantissa__float_add, 9
-    shr right_mantissa__float_add, 9
-    
-    cmp left_exponent__float_add, right_exponent__float_add
-        jge _left_exp_ge_right__float_add
-        xchg left_sign__float_add, right_sign__float_add
-        xchg left_exponent__float_add, right_exponent__float_add
-        xchg left_mantissa__float_add, right_mantissa__float_add
+_left_not_trivial__float_add:          cmp right__float_add, 0
+                            jne _right_not_trivial__float_add
+                            mov eax, left__float_add
+                            jmp _epilogue__float_add
 
-    _left_exp_ge_right__float_add:
+_right_not_trivial__float_add:         
+                            left_sign__float_add     equ dword ptr [EBP - 4]
+                            left_exponent__float_add equ dword ptr [EBP - 8]
+                            left_mantissa__float_add equ dword ptr [EBP - 12]
+                            
+                            right_sign__float_add     equ dword ptr [EBP - 16]
+                            right_exponent__float_add equ dword ptr [EBP - 20]
+                            right_mantissa__float_add equ dword ptr [EBP - 24]
     
-    sub esp, 4
-    
-    exp_diff__float_add equ dword ptr [EBP - 28]
-    mov exp_diff__float_add, left_exponent__float_add
-    sub exp_diff__float_add, right_exponent__float_add
-    
-    cmp exp_diff__float_add, 31
-        jle _exp_diff_is_at_most_31__float_add
-        ; return left
-        shl left_sign__float_add, 31
-        shl left_exponent__float_add, 23
-        mov eax, left_sign__float_add
-        or eax, left_exponent__float_add
-        or eax, left_mantissa__float_add
-        jmp _epilogue__float_add
-    
-    _exp_diff_is_at_most_31__float_add:
-    cmp left_sign__float_add, right_sign__float_add
-        jne _different_signs__float_add
+                            mov left_sign__float_add, left__float_add
+                            shr left_sign__float_add, 31
+                            
+                            mov left_exponent__float_add, left__float_add
+                            shl left_exponent__float_add, 1
+                            shr left_exponent__float_add, 24
+                            
+                            mov left_mantissa__float_add, left__float_add
+                            shl left_mantissa__float_add, 9
+                            shr left_mantissa__float_add, 9
+                            
+                            mov right_sign__float_add, right__float_add
+                            shr right_sign__float_add, 31
+                            
+                            mov right_exponent__float_add, right__float_add
+                            shl right_exponent__float_add, 1
+                            shr right_exponent__float_add, 24
+                            
+                            mov right_mantissa__float_add, right__float_add
+                            shl right_mantissa__float_add, 9
+                            shr right_mantissa__float_add, 9
 
-        or left_mantissa__float_add,  01000000h ; 1 << 24
-        or right_mantissa__float_add, 01000000h ; 1 << 24
-    
+              _init_done__float_add:   mov EDI, left__float_add
+                            shr edi, 1
+                            shl edi, 1
 
-        
+                            mov ESI, right__float_add
+                            shr esi, 1
+                            shl esi, 1
+                            
+                            cmp edi, esi
+                            jge _left_exp_ge_right__float_add
+                            xchg left__float_add, right__float_add
 
-        
+                            exchange_memory left_sign__float_add,     right_sign__float_add,     buffer__float_add
+                            exchange_memory left_exponent__float_add, right_exponent__float_add, buffer__float_add
+                            exchange_memory left_mantissa__float_add, right_mantissa__float_add, buffer__float_add
 
-        
+      _left_exp_ge_right__float_add:   mov buffer__float_add, left_exponent__float_add
+                            sub buffer__float_add, right_exponent__float_add
     
+                            cmp buffer__float_add, 31
+                            jle _exp_diff_is_at_most_31__float_add
+                            mov eax, left__float_add
+                            jmp _epilogue__float_add
     
-    
-    
-        
+_exp_diff_is_at_most_31__float_add:    or left_mantissa__float_add,  0800000h ; 1 << 23
+                            or right_mantissa__float_add, 0800000h ; 1 << 23
+                                        
+                            shr right_mantissa__float_add, cl
+                            cmp_memory left_sign__float_add, right_sign__float_add, buffer__float_add
+                            jne _diff_signs__float_add 
 
-        
+                            mov eax, left_mantissa__float_add
+            _same_signs__float_add:                add eax, right_mantissa__float_add
+                                        cmp eax, 01000000h ; 1 << 24 = 10 << 23
+                                        jl _not_greater_2__float_add 
+                                        inc left_exponent__float_add
+                                        shr eax, 1
 
+                        _not_greater_2__float_add: shl left_sign__float_add, 31
+                                        shl left_exponent__float_add, 23
+                                        or eax, left_sign__float_add
+                                        or eax, left_exponent__float_add
+                                        jmp _epilogue__float_add
 
-    
-    
+            _diff_signs__float_add:                sub eax, right_mantissa__float_add
+                                        cmp eax, 0
+                                        je _epilogue__float_add
 
-    _different_signs__float_add:
-    
-    
+                                _while__float_add: mov buffer__float_add, eax
+                                        and buffer__float_add, 0800000h ; 1 << 23. 
+                                        cmp buffer__float_add, 0
+                                        jg _while_end__float_add
+                                        shl eax, 1
+                                        jmp _while__float_add
 
-    
-    
-    
-
-
-
+                            _while_end__float_add: xor eax, 0800000h
+                                        shl left_sign__float_add, 31
+                                        shl left_exponent__float_add, 23
+                                        or eax, left_sign__float_add
+                                        or eax, left_exponent__float_add
+                                        jmp _epilogue__float_add
 _epilogue__float_add:
+    pop ESI
+    pop EDI
+    pop EBX
+
     mov esp, ebp
     pop ebp
     ret
@@ -442,13 +486,8 @@ main:
     mov    eax, data
     mov    ds, eax
 
-
-    mov dx, offset input_str + 1
-    push dx
-
-    xor dx, dx
-    mov dl, [input_str]
-    push dx
+    push offset input_str + 1 
+    push [input_str] 
     call parse_float
 
     xor    eax, eax
