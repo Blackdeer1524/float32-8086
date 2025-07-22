@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     first_str db (first_EOF - $ - 1)
-              db "-0.1"
+              db "-13.1"
     first_EOF db "$"
     
     second_str db (second_EOF - $ - 1)
@@ -417,12 +417,12 @@ _right_not_trivial__float_add:
 
 _init_done__float_add:   
     mov EDI, left__float_add
-    shr edi, 1
     shl edi, 1
+    shr edi, 1
 
     mov ESI, right__float_add
-    shr esi, 1
     shl esi, 1
+    shr esi, 1
 
     cmp edi, esi
     jge _left_exp_ge_right__float_add
