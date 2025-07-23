@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     first_str db (first_EOF - $ - 1)
-              db "-13.1"
+              db "0.5"
     first_EOF db "$"
     
     second_str db (second_EOF - $ - 1)
@@ -496,217 +496,213 @@ _epilogue:
     ret
 float_add endp
     
-; fast power-of-two division (power >= 0)
-float_power_2_div proc ; (uint32 [float] target; uint16 power_of_two)
-    push ebp
-    mov ebp, esp
-    
-    sub esp, 8
-    
-    target equ eax
-    shift equ word ptr [ebp + 10] 
-
-    mov target, dword ptr [EBP + 6]
-    cmp target, 0
-    je _epilogue
-    
-    cmp shift, 0
-    je _epilogue
-    
-    sign     equ dword ptr [EBP - 4]
-    exponent equ ecx
-    exponent_lower equ cx
-    mantissa equ dword ptr [EBP - 8]
-
-    mov sign, target
-    shr sign, 31
-    
-    mov exponent, target
-    shl exponent, 1
-    shr exponent, 24
-    
-    mov mantissa, target
-    shl mantissa, 9
-    shr mantissa, 9
-    
-    cmp exponent_lower, shift
-        jge _ok
-        mov target, 0
-        jmp _epilogue
-_ok:
-    sub exponent_lower, shift
-    mov target, exponent
-    shl target, 23
-    shl sign, 31
-    or target, sign
-    or target, mantissa
-    
-_epilogue: 
-    mov esp, ebp
-    pop ebp
-    ret
-float_power_2_mult endp
-    
-; fast power-of-two multiplication (power >= 0)
+; fast power-of-two multiplication (-127 <= power <= 126)
 float_power_2_mult proc ; (uint32 [float] target; uint16 power_of_two)
     push ebp
     mov ebp, esp
     
     sub esp, 8
+    sign           equ dword ptr [EBP - 4]
+    exponent       equ ecx
+    exponent_lower equ cl
+    mantissa       equ dword ptr [EBP - 8]
+    buffer         equ  dl
     
     target equ eax
-    shift equ word ptr [ebp + 10]
+    power_of_two equ byte ptr [ebp + 10] ; NOT WORD PTR!! 
     
     mov target, dword ptr [EBP + 6]
     cmp target, 0
     je _epilogue
     
-    cmp shift, 0
+    cmp power_of_two, 0
     je _epilogue
     
-    sign     equ dword ptr [EBP - 4]
-    exponent equ ecx
-    exponent_lower equ cx
-    mantissa equ dword ptr [EBP - 8]
-
     mov sign, target
     shr sign, 31
     
     mov exponent, target
     shl exponent, 1
     shr exponent, 24
+    sub exponent_lower, 127
     
     mov mantissa, target
     shl mantissa, 9
     shr mantissa, 9
-    
-    add exponent_lower, shift
-    cmp exponent, 255
-        jle _exp_is_bounded
-        mov target, 07f800000h 
+
+_init_done:
+    cmp power_of_two, 0
+    jl _check_underflow
+
+_check_overflow: 
+    ; power_of_two >= 0
+    ; exponent + power <= 126 <->  exponent <= 126 - power
+    mov buffer, 126
+    sub buffer, power_of_two
+    cmp exponent_lower, buffer
+        jle _result_is_bounded
+        mov target, 07f800000h  ; 255 << 23
         shl sign, 31
         or target, sign
         jmp _epilogue
-
-_exp_is_bounded:
+    
+_check_underflow: 
+    ; power_of_two < 0
+    ; exponent + power >= -127 <-> exponent >= -127 - power
+    mov buffer, -127
+    sub buffer, power_of_two
+    cmp exponent_lower, buffer
+        jge _result_is_bounded
+        mov target, 0
+        jmp _epilogue
+        
+_result_is_bounded:
+    add exponent_lower, power_of_two
+    add exponent_lower, 127
+    
     mov target, exponent
     shl target, 23
     shl sign, 31
     or target, sign
     or target, mantissa
+
 _epilogue: 
     mov esp, ebp
     pop ebp
     ret
 float_power_2_mult endp
 
-float_mul proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
-    push ebp
-    mov ebp, esp
-    
-    sub esp, 28
-
-    push EBX
-    push EDI
-    push esi
-
-    left equ EBX
-    right equ EDX
-    buffer equ ECX
-
-    mov left, dword ptr [EBP + 6]
-    mov right, dword ptr [EBP + 10]
-
-    cmp left, 0
-    jne _left_not_trivial
-    mov eax, 0
-    jmp _epilogue
-
-_left_not_trivial:          
-    cmp right, 0
-    jne _right_not_trivial
-    mov eax, 0
-    jmp _epilogue
-
-_right_not_trivial:         
-    left_sign     equ dword ptr [EBP - 4]
-    left_exponent equ dword ptr [EBP - 8]
-    left_mantissa equ dword ptr [EBP - 12]
-    
-    right_sign     equ dword ptr [EBP - 16]
-    right_exponent equ dword ptr [EBP - 20]
-    right_mantissa equ dword ptr [EBP - 24]
-    
-    old_left_mantissa equ dword ptr [EBP - 28]
-
-    mov left_sign, left
-    shr left_sign, 31
-    
-    mov left_exponent, left
-    shl left_exponent, 1
-    shr left_exponent, 24
-    
-    mov left_mantissa, left
-    shl left_mantissa, 9
-    shr left_mantissa, 9
-    
-    mov right_sign, right
-    shr right_sign, 31
-    
-    mov right_exponent, right
-    shl right_exponent, 1
-    shr right_exponent, 24
-    
-    mov right_mantissa, right
-    shl right_mantissa, 9
-    shr right_mantissa, 9
-    or right_mantissa, 0800000h ; 1 << 23
-    
-    mov old_left_mantissa, 03f800000h
-    or  old_left_mantissa, left_mantissa
-_init_done:   
-    mov edi, left_exponent
-    add edi, right_exponent 
-    
-    new_mantissa equ esi
-    mov new_mantissa old_left_mantissa
-_while:
-    cmp right_mantissa, 0
-    je _while_done
-    
-    mov buffer, right_mantissa
-    and buffer, 1
-    cmp buffer, 0
-    je _after_addition
-    
-    mov buffer, new_mantissa
-
-    push ecx 
-    push edx
-    push 1
-    push buffer
-    call float_power_2_mult
-    push edx
-    push ecx 
-    
-
-
-_after_addition:
-    shr right_mantissa, 1
-_while_done:
-
-_epilogue:
-    pop esi
-    pop EDI
-    pop EBX
-
-    mov esp, ebp
-    pop ebp
-    ret
-float_mul endp
-
-float_display proc
-float_display endp
+; float_mul proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
+;     push ebp
+;     mov ebp, esp
+;     
+;     sub esp, 28
+; 
+;     push EBX
+;     push EDI
+;     push esi
+;     push edi
+; 
+;     left equ EBX
+;     right equ EDX
+;     buffer equ ECX
+; 
+;     mov left, dword ptr [EBP + 6]
+;     mov right, dword ptr [EBP + 10]
+; 
+;     cmp left, 0
+;     jne _left_not_trivial
+;     mov eax, 0
+;     jmp _epilogue
+; 
+; _left_not_trivial:          
+;     cmp right, 0
+;     jne _right_not_trivial
+;     mov eax, 0
+;     jmp _epilogue
+; 
+; _right_not_trivial:         
+;     left_sign     equ dword ptr [EBP - 4]
+;     left_exponent equ dword ptr [EBP - 8]
+;     left_mantissa equ dword ptr [EBP - 12]
+;     
+;     right_sign     equ dword ptr [EBP - 16]
+;     right_exponent equ dword ptr [EBP - 20]
+;     right_mantissa equ dword ptr [EBP - 24]
+;     
+;     old_left_mantissa equ dword ptr [EBP - 28]
+; 
+;     mov left_sign, left
+;     shr left_sign, 31
+;     
+;     mov left_exponent, left
+;     shl left_exponent, 1
+;     shr left_exponent, 24
+;     
+;     mov left_mantissa, left
+;     shl left_mantissa, 9
+;     shr left_mantissa, 9
+;     
+;     mov right_sign, right
+;     shr right_sign, 31
+;     
+;     mov right_exponent, right
+;     shl right_exponent, 1
+;     shr right_exponent, 24
+;     
+;     mov right_mantissa, right
+;     shl right_mantissa, 9
+;     shr right_mantissa, 9
+;     or right_mantissa, 0800000h ; 1 << 23
+;     
+;     mov old_left_mantissa, 03f800000h
+;     or  old_left_mantissa, left_mantissa  ; 2 ^ 0 * left mantissa
+; _init_done:   
+;     result_exponent equ edi
+;     mov result_exponent, left_exponent
+;     add result_exponent, right_exponent ; TODO: CHECK EXPONENT OVERFLOW 
+;     
+;     result_mantissa equ esi
+;     mov result_mantissa 0
+;     
+;     counter equ di
+;     xor counter, counter
+; _while:
+;     cmp right_mantissa, 0
+;     je _while_done
+;     
+;     mov buffer, right_mantissa
+;     and buffer, 1
+;     cmp buffer, 0
+;     je _after_addition
+;     
+;     mov buffer, old_left_mantissa 
+; 
+;     push ecx 
+;     push edx
+;     push counter
+;     push buffer
+;     call float_power_2_mult
+;     add esp, 6
+;     pop edx
+;     pop ecx 
+;     
+;     push ecx 
+;     push edx
+;     push eax
+;     push result_mantissa
+;     call float_add
+;     add esp, 8
+;     pop edx
+;     pop ecx 
+;     
+;     mov result_mantissa, eax
+; _after_addition:
+;     shr right_mantissa, 1
+;     inc counter
+;     jmp _while
+; _while_done:
+;     push ecx 
+;     push edx
+;     
+;     push 23
+;     push result_mantissa
+;     call float_power_2_div
+;     add esp, 6
+;     
+;     pop edx
+;     pop ecx 
+; 
+; _epilogue:
+;     pop edi
+;     pop esi
+;     pop EDI
+;     pop EBX
+; 
+;     mov esp, ebp
+;     pop ebp
+;     ret
+; float_mul endp
 
 main proc
     mov    eax, data
@@ -720,39 +716,62 @@ main proc
     left equ dword ptr [ebp - 4]
     right equ dword ptr [ebp - 8]
     
-    ; ============================
-    push offset first_str + 1 
     
+    ; ========= parsing a float =========
+    push offset first_str + 1 
     xor dx, dx
     mov dl, byte ptr [first_str] 
     push dx
     call parse_float
     sub esp, 4
+    ; ===================================
     
-    mov left, eax
-
-    ; ============================
-    push offset second_str + 1 
+    push ecx
+    push edx
     
     xor dx, dx
-    mov dl, byte ptr [second_str] 
+    mov dl, 30
     push dx
-    call parse_float
-    add esp, 4
+    push eax
+    call float_power_2_mult
+    add esp, 6
     
-    mov right, eax
-    ; ============================
+    pop edx
+    pop ecx 
     
-    mov eax, right
-    push right
-    mov eax, left
-    push left
-    call float_add
-    add esp, 8
-    
-    xor    eax, eax
-    mov    ah, 4Ch
-    int    21h
+    ;; ============================
+    ;push offset first_str + 1 
+    ;
+    ;xor dx, dx
+    ;mov dl, byte ptr [first_str] 
+    ;push dx
+    ;call parse_float
+    ;sub esp, 4
+    ;
+    ;mov left, eax
+
+    ;; ============================
+    ;push offset second_str + 1 
+    ;
+    ;xor dx, dx
+    ;mov dl, byte ptr [second_str] 
+    ;push dx
+    ;call parse_float
+    ;add esp, 4
+    ;
+    ;mov right, eax
+    ;; ============================
+    ;
+    ;mov eax, right
+    ;push right
+    ;mov eax, left
+    ;push left
+    ;call float_add
+    ;add esp, 8
+    ;
+    ;xor    eax, eax
+    ;mov    ah, 4Ch
+    ;int    21h
 main endp
 
 code ends
