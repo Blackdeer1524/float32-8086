@@ -12,6 +12,8 @@ data segment use16
     second_str db (second_EOF - $ - 1)
               db "10"
     second_EOF db "$"
+    
+    output db "$" dup 100 
 
     err_unexpected_chr db "Invalid symbol in number"
 data ends
@@ -353,6 +355,19 @@ cmp_memory macro left, right, tmp_reg
     mov tmp_reg, left
     cmp tmp_reg, right
 endm
+    
+float_decompose macro num, sign32, exponent32, mantissa32
+    mov sign32, num
+    shr sign32, 31
+    
+    mov exponent32, num
+    shl exponent32, 1
+    shr exponent32, 24
+    
+    mov mantissa32, num
+    shl mantissa32, 9
+    shr mantissa32, 9
+endm
 
 float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
     push ebp
@@ -393,28 +408,8 @@ _right_not_trivial:
     right_exponent equ dword ptr [EBP - 20]
     right_mantissa equ dword ptr [EBP - 24]
 
-    mov left_sign, left
-    shr left_sign, 31
-    
-    mov left_exponent, left
-    shl left_exponent, 1
-    shr left_exponent, 24
-    
-    mov left_mantissa, left
-    shl left_mantissa, 9
-    shr left_mantissa, 9
-    
-    mov right_sign, right
-    shr right_sign, 31
-    
-    mov right_exponent, right
-    shl right_exponent, 1
-    shr right_exponent, 24
-    
-    mov right_mantissa, right
-    shl right_mantissa, 9
-    shr right_mantissa, 9
-
+    float_decompose left, left_sign, left_exponent, left_mantissa
+    float_decompose right, right_sign, right_exponent, right_mantissa
 _init_done:   
     mov EDI, left
     shl edi, 1
@@ -521,17 +516,8 @@ float_power_2_mult proc ; (uint32 [float] target; uint16 power_of_two)
     cmp power_of_two, 0
     je _epilogue
     
-    mov sign, target
-    shr sign, 31
-    
-    mov exponent, target
-    shl exponent, 1
-    shr exponent, 24
+    float_decompose target, sign, exponent, mantissa
     sub exponent_lower, 127
-    
-    mov mantissa, target
-    shl mantissa, 9
-    shr mantissa, 9
 
 _init_done:
     cmp power_of_two, 0
@@ -617,27 +603,9 @@ _not_trivial:
     
     old_left_mantissa equ dword ptr [EBP - 28]
 
-    mov left_sign, left
-    shr left_sign, 31
+    float_decompose left, left_sign, left_exponent, left_mantissa
+    float_decompose right, right_sign, right_exponent, right_mantissa
     
-    mov left_exponent, left
-    shl left_exponent, 1
-    shr left_exponent, 24
-    
-    mov left_mantissa, left
-    shl left_mantissa, 9
-    shr left_mantissa, 9
-    
-    mov right_sign, right
-    shr right_sign, 31
-    
-    mov right_exponent, right
-    shl right_exponent, 1
-    shr right_exponent, 24
-    
-    mov right_mantissa, right
-    shl right_mantissa, 9
-    shr right_mantissa, 9
     or right_mantissa, 0800000h ; 1 << 23
     
     mov buffer, 03f800000h
@@ -739,6 +707,33 @@ scan_float macro loc, dst
     pop edx
     pop ecx
 endm
+    
+float_negate macro target
+    xor target 080000000h ; 1 << 31
+endm
+    
+float_to_int proc ; (uint32 [float]) -> int32
+    push ebp
+    mov ebp, esp
+    
+
+    target equ edx
+    mov target, dword ptr [epb + 6]
+
+
+    mov esp, ebp
+    pop ebp
+    ret
+float_display endp
+    
+display_float proc ; (uint32 float) -> void
+    push ebp
+    mov ebp, esp
+
+    mov esp, ebp
+    pop ebp
+    ret
+display_float  endp
 
 
 main proc

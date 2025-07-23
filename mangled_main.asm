@@ -723,6 +723,11 @@ _epilogue__float_mul:
     ret
 float_mul endp
     
+display_float proc
+    
+
+
+
 
 scan_float macro loc, dst
     push ecx
