@@ -2,16 +2,9 @@
 .model flat   
  
 data segment use16
-    ;input_buf db 26         ;MAX NUMBER OF CHARACTERS ALLOWED (25).
-    ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
-    ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
-    first_str db (first_EOF - $ - 1)
-              db "-239.123"
-    first_EOF db "$"
-    
-    second_str db (second_EOF - $ - 1)
-              db "10"
-    second_EOF db "$"
+    buf db 10 
+    s   db ?
+        db 10 dup(0)  ;CHARACTERS ENTERED BY USER.
 
     err_unexpected_chr        db "Invalid symbol in number"
     err_float_to_int32_overflow db "Overflow detected in float_to_int32$"
@@ -31,28 +24,30 @@ exit_with_message macro message
     int    21h
 endm
         
-input proc
-    push   ebp
-    mov    ebp, esp
+input proc ; (char *) -> void
+    push ebp
+    mov ebp, esp
+    
+    push si
 
-    mov    edx, [ebp + 2 + 4]
-    xor    eax, eax
-    mov    ah, 0Ah
-    int    21h
+    mov dx, word ptr [ebp+6]
+    xor ax, ax
+    mov ah, 0Ah
+    int 21h
 
-    mov    edx, [ebp + 2 + 6]
-    inc    edx
-    mov    esi, edx
-    mov    ecx, [esi]
-    xor    ch, ch
-    add    si, cx
-    mov    byte ptr [si+1], '$'
-    inc    dx
+    mov si, word ptr [ebp+6]
+    inc si
+    mov cl, byte ptr [si]
+    xor ch, ch
+    add si, cx
+    mov byte ptr [si+1], '$'
+    
+    pop si
 
-    pop    ebp
+    mov esp, ebp
+    pop ebp
     ret
 input endp
-
 ; eax, ecx, edx are caller-safe!
 float_parse proc ; (uint16 len, char *str)
     push ebp
@@ -1015,31 +1010,34 @@ main proc
     left__main equ dword ptr [ebp - 4]
     right__main equ dword ptr [ebp - 8]
     
-    scan_float first_str left__main
-    ; scan_float second_str right__main
+    mov dx, offset buf
+    push dx
+    call input
+    add esp, 2
+    scan_float s left__main
+    
+    mov ah, 2  ; print CR symbol
+    mov dx, 10 
+    int 21h                         
+
+    mov dx, offset buf
+    push dx
+    call input
+    add esp, 2
+    scan_float s right__main
+    
+    mov ah, 2  ; print CR symbol
+    mov dx, 10 
+    int 21h                         
     
     push left__main
-    ; check with 411ffff8
-    ; call float_to_int32
+    push right__main
+    call float_add
+    add esp, 8
+    
+    push eax
     call display_float
-
-    ; mov eax, 0
-    ; push eax
-    ; call print_i32
-    
-    ; mov eax, 2
-    ; push eax
-    ; call int32_to_float
-
-    ; push left__main
-    ; call float_to_int32
-    
-    ; mov eax, right__main
-    ; push right__main
-    ; mov eax, left__main
-    ; push left__main
-    ; call float_mul
-    ; add esp, 8
+    add esp, 4
     
     xor    eax, eax
     mov    ah, 4Ch
