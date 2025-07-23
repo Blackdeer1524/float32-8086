@@ -771,9 +771,88 @@ _overflow__float_to_int:
     exit_with_message err_float_to_int_overflow
 float_to_int endp
     
+int32_to_float proc ; (int32) -> float
+    push ebp
+    mov ebp, esp
+    
+    sub esp, 4
+    
+    sign__int32_to_float equ dword ptr [ebp - 4]
+    mov sign__int32_to_float, 0
+    
+    num__int32_to_float equ edx
+    mov num__int32_to_float, dword ptr [EBP + 6]
+
+    cmp num__int32_to_float, 0
+        jg _sign_determined__int32_to_float 
+        jl _is_negative__int32_to_float
+        mov eax, 0 
+        jmp _epilogue__int32_to_float
+
+_is_negative__int32_to_float:
+    neg num__int32_to_float
+    mov sign__int32_to_float, 080000000h ; 1 << 31
+    jmp _sign_determined__int32_to_float
+
+_sign_determined__int32_to_float:
+    exponent__int32_to_float    equ ecx
+    exponent_ll__int32_to_float equ cl
+    xor exponent__int32_to_float, exponent__int32_to_float 
+
+    bsr exponent__int32_to_float, num__int32_to_float
+    cmp exponent_ll__int32_to_float, 23
+    jl _first_bit_index_lt_23__int32_to_float
+
+_first_bit_index_ge_23__int32_to_float:
+    sub exponent_ll__int32_to_float, 23
+    shr num__int32_to_float, exponent_ll__int32_to_float
+    jmp _mantissa_done__int32_to_float
+    
+_first_bit_index_lt_23__int32_to_float:
+    sub exponent_ll__int32_to_float, 23
+    neg exponent_ll__int32_to_float
+    shl num__int32_to_float, exponent_ll__int32_to_float
+    neg exponent_ll__int32_to_float
+    jmp _mantissa_done__int32_to_float
+
+_mantissa_done__int32_to_float:
+    add exponent_ll__int32_to_float, 23 + 127
+    shl exponent__int32_to_float, 23
+    or exponent__int32_to_float, sign__int32_to_float
+    xor num__int32_to_float, 0800000h ; 1 << 23
+    or exponent__int32_to_float, num__int32_to_float
+    mov eax, exponent__int32_to_float
+    jmp _epilogue__int32_to_float
+
+_epilogue__int32_to_float: 
+    mov esp, ebp
+    pop ebp
+    ret
+int32_to_float endp
+
+
 display_float proc ; (uint32 float) -> void
     push ebp
     mov ebp, esp
+    
+    num__display_float    equ EDX
+    buffer__display_float equ ECX
+    
+    mov num__display_float, dword ptr [ebp + 6]
+    
+    push ecx 
+    push edx
+    
+    push num__display_float
+    call float_to_int
+    
+    
+    pop edx
+    pop ecx 
+    
+    
+    
+    
 
     mov esp, ebp
     pop ebp
@@ -795,8 +874,12 @@ main proc
     scan_float first_str left__main
     scan_float second_str right__main
     
-    push left__main
-    call float_to_int
+    mov eax, 13107199
+    push eax
+    call int32_to_float
+
+    ; push left__main
+    ; call float_to_int
     
     ; mov eax, right__main
     ; push right__main

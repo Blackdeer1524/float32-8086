@@ -771,9 +771,88 @@ _overflow:
     exit_with_message err_float_to_int_overflow
 float_to_int endp
     
+int32_to_float proc ; (int32) -> float
+    push ebp
+    mov ebp, esp
+    
+    sub esp, 4
+    
+    sign equ dword ptr [ebp - 4]
+    mov sign, 0
+    
+    num equ edx
+    mov num, dword ptr [EBP + 6]
+
+    cmp num, 0
+        jg _sign_determined 
+        jl _is_negative
+        mov eax, 0 
+        jmp _epilogue
+
+_is_negative:
+    neg num
+    mov sign, 080000000h ; 1 << 31
+    jmp _sign_determined
+
+_sign_determined:
+    exponent    equ ecx
+    exponent_ll equ cl
+    xor exponent, exponent 
+
+    bsr exponent, num
+    cmp exponent_ll, 23
+    jl _first_bit_index_lt_23
+
+_first_bit_index_ge_23:
+    sub exponent_ll, 23
+    shr num, exponent_ll
+    jmp _mantissa_done
+    
+_first_bit_index_lt_23:
+    sub exponent_ll, 23
+    neg exponent_ll
+    shl num, exponent_ll
+    neg exponent_ll
+    jmp _mantissa_done
+
+_mantissa_done:
+    add exponent_ll, 23 + 127
+    shl exponent, 23
+    or exponent, sign
+    xor num, 0800000h ; 1 << 23
+    or exponent, num
+    mov eax, exponent
+    jmp _epilogue
+
+_epilogue: 
+    mov esp, ebp
+    pop ebp
+    ret
+int32_to_float endp
+
+
 display_float proc ; (uint32 float) -> void
     push ebp
     mov ebp, esp
+    
+    num    equ EDX
+    buffer equ ECX
+    
+    mov num, dword ptr [ebp + 6]
+    
+    push ecx 
+    push edx
+    
+    push num
+    call float_to_int
+    
+    
+    pop edx
+    pop ecx 
+    
+    
+    
+    
 
     mov esp, ebp
     pop ebp
@@ -795,8 +874,12 @@ main proc
     scan_float first_str left
     scan_float second_str right
     
-    push left
-    call float_to_int
+    mov eax, 2
+    push eax
+    call int32_to_float
+
+    ; push left
+    ; call float_to_int
     
     ; mov eax, right
     ; push right
