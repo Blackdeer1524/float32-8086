@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     first_str db (first_EOF - $ - 1)
-              db "-0.1"
+              db "1.2"
     first_EOF db "$"
     
     second_str db (second_EOF - $ - 1)
@@ -376,6 +376,13 @@ float_decompose macro num_reg, sign32, exponent32, mantissa32
     shl mantissa32, 9
     shr mantissa32, 9
 endm
+    
+is_float_zero macro float, temp_reg
+    mov temp_reg, float
+    shl temp_reg, 1
+    shr temp_reg, 1
+    cmp temp_reg, 0
+endm
 
 float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
     push ebp
@@ -396,18 +403,18 @@ float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
     mov left, dword ptr [EBP + 6]
     mov right, dword ptr [EBP + 10]
 
-    cmp left, 0
+    is_float_zero left, buffer
     jne _left_not_trivial
     mov eax, right
     jmp _epilogue
 
 _left_not_trivial:          
-    cmp right, 0
-    jne _right_not_trivial
+    is_float_zero right, buffer
+    jne _not_trivial 
     mov eax, left
     jmp _epilogue
 
-_right_not_trivial:         
+_not_trivial:         
     left_sign     equ dword ptr [EBP - 4]
     left_exponent equ dword ptr [EBP - 8]
     left_mantissa equ dword ptr [EBP - 12]
@@ -589,13 +596,13 @@ float_mul proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
     mov left, dword ptr [EBP + 6]
     mov right, dword ptr [EBP + 10]
 
-    cmp left, 0
+    is_float_zero left, buffer
     jne _left_not_trivial
     mov eax, 0
     jmp _epilogue
 
 _left_not_trivial:          
-    cmp right, 0
+    is_float_zero right, buffer
     jne _not_trivial 
     mov eax, 0
     jmp _epilogue
@@ -718,6 +725,13 @@ endm
 float_negate macro target
     xor target, 080000000h ; 1 << 31
 endm
+
+float_is_positive macro target
+    push target
+    shr target, 31
+    cmp target, 0
+    pop target
+endm
     
 float_to_int32 proc ; (uint32 [float]) -> int32
     push ebp
@@ -725,8 +739,8 @@ float_to_int32 proc ; (uint32 [float]) -> int32
 
     sub esp, 8
     sign        equ dword ptr [EBP - 4]
-    exponent    equ dword ptr [EBP - 8]
-    exponent_ll equ  byte ptr [EBP - 8]  ; little endian
+    exponent    equ EDX; dword ptr [EBP - 8]
+    exponent_ll equ DL;  byte ptr [EBP - 8]  ; little endian
     mantissa    equ EAX
     buffer      equ ECX
     buffer_ll   equ CL
@@ -740,7 +754,7 @@ _init_done:
     jg _overflow
     
     cmp exponent_ll, 0
-        jg _not_trivial
+        jge _not_trivial
     mov eax, 0
     jmp _epilogue
 
@@ -893,18 +907,28 @@ display_float proc ; (uint32 float) -> void
     push ebp
     mov ebp, esp
     
-    sub esp, 5
+    sub esp, 9
 
-    iter_count equ  byte ptr [ebp - 1]
+    float_10         equ dword ptr [ebp - 4]
+    new_decimal_part equ dword ptr [ebp - 8]
+    iter_count       equ  byte ptr [ebp - 9]
 
-    float_10   equ dword ptr [ebp - 5]
     mov eax, 10
     push eax
     call int32_to_float
     mov float_10, eax
-
+    
     num equ dword ptr [ebp + 6]
+    float_is_positive num
+    je _float_is_positive
 
+    mov ah, 2                       
+    mov dx, '-'
+    int 21h    
+
+    float_negate num
+
+_float_is_positive:
     push num
     call float_to_int32
     add esp, 4
@@ -939,23 +963,36 @@ _while:
     cmp iter_count, 10 ; how many digits to print after the point
     je _while_done
     
-    push edx ; save decimal_part
-    
     push float_10
     push decimal_part
     call float_mul
+    mov new_decimal_part, eax
     add esp, 8
     
     push eax
     call float_to_int32
+    add esp, 4
     
+    push eax
     mov dx, ax
     add dx, '0'
     mov ah, 2                       
-    int 21h    
-    
-    pop edx  ; restore decimal_part
+    int 21h  
+    pop eax
 
+    push eax
+    call int32_to_float
+    add esp, 4
+    
+    mov decimal_part, new_decimal_part
+    float_negate eax
+    push eax
+    push decimal_part 
+    call float_add
+    add esp, 8
+
+    mov decimal_part, eax
+    
     inc iter_count 
     jmp _while
 _while_done:
@@ -979,10 +1016,11 @@ main proc
     right equ dword ptr [ebp - 8]
     
     scan_float first_str left
-    scan_float second_str right
+    ; scan_float second_str right
     
     push left
-    call display_float
+    call float_to_int32
+    ; call display_float
 
     ; mov eax, 0
     ; push eax
