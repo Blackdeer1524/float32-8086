@@ -12,9 +12,6 @@ data segment use16
     second_str db (second_EOF - $ - 1)
               db "10"
     second_EOF db "$"
-    
-    output db 100 
-           db "$" dup (100)
 
     err_unexpected_chr        db "Invalid symbol in number"
     err_float_to_int_overflow db "Overflow detected in float_to_int$"
@@ -831,10 +828,62 @@ _epilogue:
 int32_to_float endp
 
 
+; https://stackoverflow.com/a/5812104
+print_i32 proc ; (int32) -> void
+    push ebp 
+    mov ebp, esp
+    
+    sub esp, 1 
+    is_negative equ byte ptr [EBP - 1]
+    mov is_negative, 0
+
+    push ebx
+    
+    num equ eax
+    mov num, dword ptr [ebp + 6]
+    
+    cmp num, 0
+        jge _determined_sign
+    neg num
+    mov is_negative, 1
+
+_determined_sign:
+    mov cx, 0
+    mov ebx, 10
+
+_loophere:
+    xor edx, edx
+    div ebx    
+    add dl, '0'
+    push dx    
+    inc cx     
+    cmp num, 0  
+jne _loophere
+
+    mov ah, 2                       ;2 is the function number of output char in the DOS Services.
+    cmp is_negative, 1
+        jne _loophere2 
+
+    mov dx, '-'
+    int 21h                         
+    
+_loophere2:
+    pop dx                          ;restore digits from last to first
+    int 21h                         ;calls DOS Services
+    loop _loophere2 
+    
+_epilogue:
+    pop ebx
+    
+    mov esp, ebp
+    pop ebp
+    ret
+print_i32 endp
+
 display_float proc ; (uint32 float) -> void
     push ebp
     mov ebp, esp
-    
+
     num    equ EDX
     buffer equ ECX
     
@@ -845,15 +894,11 @@ display_float proc ; (uint32 float) -> void
     
     push num
     call float_to_int
-    
+    add num, 4
     
     pop edx
     pop ecx 
     
-    
-    
-    
-
     mov esp, ebp
     pop ebp
     ret
@@ -873,10 +918,14 @@ main proc
     
     scan_float first_str left
     scan_float second_str right
-    
-    mov eax, 2
+
+    mov eax, 0
     push eax
-    call int32_to_float
+    call print_i32
+    
+    ; mov eax, 2
+    ; push eax
+    ; call int32_to_float
 
     ; push left
     ; call float_to_int

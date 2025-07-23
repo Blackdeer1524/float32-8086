@@ -141,7 +141,7 @@ def mangle(programm_text: list[str],
             "jno", "jnp", "jns",
             "jnz", "jo", "jp",
             "jpe", "jpo", "js",
-            "jz", "jcc", "jmp"
+            "jz", "jcc", "jmp", "loop"
             ))
 
         for i in range(block.start, block.end):
