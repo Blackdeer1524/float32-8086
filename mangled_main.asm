@@ -6,30 +6,34 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     first_str db (first_EOF - $ - 1)
-              db "-4.123"
+              db "-4"
     first_EOF db "$"
     
     second_str db (second_EOF - $ - 1)
-              db "1.0043"
+              db "10"
     second_EOF db "$"
+    
+    output db 100 
+           db "$" dup (100)
 
-    err_unexpected_chr db "Invalid symbol in number"
+    err_unexpected_chr        db "Invalid symbol in number"
+    err_float_to_int_overflow db "Overflow detected in float_to_int$"
 data ends
  
 code segment 'code' use16
     assume cs:code, ds:data
 
-exit_invalid_char proc 
+exit_with_message macro message
     xor    eax, eax
     
-    mov dx, offset err_unexpected_chr
+    mov dx, offset message 
 	mov ah, 09h
 	int 21h
 
     mov    ah, 4Ch
     int    21h
-exit_invalid_char endp
-    
+endm
+        
 input proc
     push   ebp
     mov    ebp, esp
@@ -192,7 +196,7 @@ _epilogue__parse_float:
     ret
 
 _error__parse_float:
-    call exit_invalid_char 
+    exit_with_message err_unexpected_chr
 parse_float endp
 
 parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
@@ -335,7 +339,7 @@ _decimal_part_outer_end__parse_mantissa:
     ret
 
 _error__parse_mantissa: 
-    call exit_invalid_char    
+    exit_with_message err_unexpected_chr
 parse_mantissa endp
     
 exchange_memory macro left, right, tmp_reg
@@ -352,6 +356,19 @@ endm
 cmp_memory macro left, right, tmp_reg
     mov tmp_reg, left
     cmp tmp_reg, right
+endm
+    
+float_decompose macro num_reg, sign32, exponent32, mantissa32
+    mov sign32, num_reg
+    shr sign32, 31
+    
+    mov exponent32, num_reg
+    shl exponent32, 1
+    shr exponent32, 24
+    
+    mov mantissa32, num_reg
+    shl mantissa32, 9
+    shr mantissa32, 9
 endm
 
 float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
@@ -393,28 +410,8 @@ _right_not_trivial__float_add:
     right_exponent__float_add equ dword ptr [EBP - 20]
     right_mantissa__float_add equ dword ptr [EBP - 24]
 
-    mov left_sign__float_add, left__float_add
-    shr left_sign__float_add, 31
-    
-    mov left_exponent__float_add, left__float_add
-    shl left_exponent__float_add, 1
-    shr left_exponent__float_add, 24
-    
-    mov left_mantissa__float_add, left__float_add
-    shl left_mantissa__float_add, 9
-    shr left_mantissa__float_add, 9
-    
-    mov right_sign__float_add, right__float_add
-    shr right_sign__float_add, 31
-    
-    mov right_exponent__float_add, right__float_add
-    shl right_exponent__float_add, 1
-    shr right_exponent__float_add, 24
-    
-    mov right_mantissa__float_add, right__float_add
-    shl right_mantissa__float_add, 9
-    shr right_mantissa__float_add, 9
-
+    float_decompose left__float_add, left_sign__float_add, left_exponent__float_add, left_mantissa__float_add
+    float_decompose right__float_add, right_sign__float_add, right_exponent__float_add, right_mantissa__float_add
 _init_done__float_add:   
     mov EDI, left__float_add
     shl edi, 1
@@ -521,17 +518,8 @@ float_power_2_mult proc ; (uint32 [float] target; uint16 power_of_two)
     cmp power_of_two__float_power_2_mult, 0
     je _epilogue__float_power_2_mult
     
-    mov sign__float_power_2_mult, target__float_power_2_mult
-    shr sign__float_power_2_mult, 31
-    
-    mov exponent__float_power_2_mult, target__float_power_2_mult
-    shl exponent__float_power_2_mult, 1
-    shr exponent__float_power_2_mult, 24
+    float_decompose target__float_power_2_mult, sign__float_power_2_mult, exponent__float_power_2_mult, mantissa__float_power_2_mult
     sub exponent_lower__float_power_2_mult, 127
-    
-    mov mantissa__float_power_2_mult, target__float_power_2_mult
-    shl mantissa__float_power_2_mult, 9
-    shr mantissa__float_power_2_mult, 9
 
 _init_done__float_power_2_mult:
     cmp power_of_two__float_power_2_mult, 0
@@ -617,27 +605,9 @@ _not_trivial__float_mul:
     
     old_left_mantissa__float_mul equ dword ptr [EBP - 28]
 
-    mov left_sign__float_mul, left__float_mul
-    shr left_sign__float_mul, 31
+    float_decompose left__float_mul, left_sign__float_mul, left_exponent__float_mul, left_mantissa__float_mul
+    float_decompose right__float_mul, right_sign__float_mul, right_exponent__float_mul, right_mantissa__float_mul
     
-    mov left_exponent__float_mul, left__float_mul
-    shl left_exponent__float_mul, 1
-    shr left_exponent__float_mul, 24
-    
-    mov left_mantissa__float_mul, left__float_mul
-    shl left_mantissa__float_mul, 9
-    shr left_mantissa__float_mul, 9
-    
-    mov right_sign__float_mul, right__float_mul
-    shr right_sign__float_mul, 31
-    
-    mov right_exponent__float_mul, right__float_mul
-    shl right_exponent__float_mul, 1
-    shr right_exponent__float_mul, 24
-    
-    mov right_mantissa__float_mul, right__float_mul
-    shl right_mantissa__float_mul, 9
-    shr right_mantissa__float_mul, 9
     or right_mantissa__float_mul, 0800000h ; 1 << 23
     
     mov buffer__float_mul, 03f800000h
@@ -723,12 +693,6 @@ _epilogue__float_mul:
     ret
 float_mul endp
     
-display_float proc
-    
-
-
-
-
 scan_float macro loc, dst
     push ecx
     push edx
@@ -744,7 +708,77 @@ scan_float macro loc, dst
     pop edx
     pop ecx
 endm
+    
+float_negate macro target
+    xor target 080000000h ; 1 << 31
+endm
+    
+float_to_int proc ; (uint32 [float]) -> int32
+    push ebp
+    mov ebp, esp
 
+    sub esp, 8
+    sign__float_to_int        equ dword ptr [EBP - 4]
+    exponent__float_to_int    equ dword ptr [EBP - 8]
+    exponent_ll__float_to_int equ  byte ptr [EBP - 8]  ; little endian
+    mantissa__float_to_int    equ EAX
+    buffer__float_to_int      equ ECX
+    buffer_ll__float_to_int   equ CL
+    
+    mov edx, dword ptr [EBP + 6]
+    float_decompose edx, sign__float_to_int, exponent__float_to_int, mantissa__float_to_int
+
+_init_done__float_to_int:
+    sub exponent_ll__float_to_int, 127
+    cmp exponent_ll__float_to_int, 31  ; keep one bit for the sign__float_to_int
+    jg _overflow__float_to_int
+    
+    cmp exponent_ll__float_to_int, 0
+        jg _not_trivial__float_to_int
+    mov eax, 0
+    jmp _epilogue__float_to_int
+
+_not_trivial__float_to_int:
+    or mantissa__float_to_int, 0800000h; 1 << 23
+    cmp exponent_ll__float_to_int, 23
+    jg _exponent_gt_23__float_to_int
+    jmp _exponent_le_23__float_to_int
+
+_exponent_le_23__float_to_int:
+    mov buffer_ll__float_to_int, 23
+    sub buffer_ll__float_to_int, exponent_ll__float_to_int
+    shr mantissa__float_to_int, buffer_ll__float_to_int
+    cmp sign__float_to_int, 1
+        jne _epilogue__float_to_int
+    neg mantissa__float_to_int
+    jmp _epilogue__float_to_int
+
+_exponent_gt_23__float_to_int:
+    mov buffer_ll__float_to_int, exponent_ll__float_to_int
+    sub buffer_ll__float_to_int, 23
+    shl mantissa__float_to_int, buffer_ll__float_to_int
+    
+    cmp sign__float_to_int, 1
+        jne _epilogue__float_to_int
+    neg mantissa__float_to_int
+    jmp _epilogue__float_to_int
+
+_epilogue__float_to_int:
+    mov esp, ebp
+    pop ebp
+    ret
+_overflow__float_to_int:
+    exit_with_message err_float_to_int_overflow
+float_to_int endp
+    
+display_float proc ; (uint32 float) -> void
+    push ebp
+    mov ebp, esp
+
+    mov esp, ebp
+    pop ebp
+    ret
+display_float endp
 
 main proc
     mov    eax, data
@@ -761,12 +795,15 @@ main proc
     scan_float first_str left__main
     scan_float second_str right__main
     
-    mov eax, right__main
-    push right__main
-    mov eax, left__main
     push left__main
-    call float_mul
-    add esp, 8
+    call float_to_int
+    
+    ; mov eax, right__main
+    ; push right__main
+    ; mov eax, left__main
+    ; push left__main
+    ; call float_mul
+    ; add esp, 8
     
     xor    eax, eax
     mov    ah, 4Ch

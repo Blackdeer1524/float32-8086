@@ -13,25 +13,27 @@ data segment use16
               db "10"
     second_EOF db "$"
     
-    output db "$" dup 100 
+    output db 100 
+           db "$" dup (100)
 
-    err_unexpected_chr db "Invalid symbol in number"
+    err_unexpected_chr        db "Invalid symbol in number"
+    err_float_to_int_overflow db "Overflow detected in float_to_int$"
 data ends
  
 code segment 'code' use16
     assume cs:code, ds:data
 
-exit_invalid_char proc 
+exit_with_message macro message
     xor    eax, eax
     
-    mov dx, offset err_unexpected_chr
+    mov dx, offset message 
 	mov ah, 09h
 	int 21h
 
     mov    ah, 4Ch
     int    21h
-exit_invalid_char endp
-    
+endm
+        
 input proc
     push   ebp
     mov    ebp, esp
@@ -194,7 +196,7 @@ _epilogue:
     ret
 
 _error:
-    call exit_invalid_char 
+    exit_with_message err_unexpected_chr
 parse_float endp
 
 parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
@@ -337,7 +339,7 @@ _decimal_part_outer_end:
     ret
 
 _error: 
-    call exit_invalid_char    
+    exit_with_message err_unexpected_chr
 parse_mantissa endp
     
 exchange_memory macro left, right, tmp_reg
@@ -356,15 +358,15 @@ cmp_memory macro left, right, tmp_reg
     cmp tmp_reg, right
 endm
     
-float_decompose macro num, sign32, exponent32, mantissa32
-    mov sign32, num
+float_decompose macro num_reg, sign32, exponent32, mantissa32
+    mov sign32, num_reg
     shr sign32, 31
     
-    mov exponent32, num
+    mov exponent32, num_reg
     shl exponent32, 1
     shr exponent32, 24
     
-    mov mantissa32, num
+    mov mantissa32, num_reg
     shl mantissa32, 9
     shr mantissa32, 9
 endm
@@ -691,7 +693,6 @@ _epilogue:
     ret
 float_mul endp
     
-
 scan_float macro loc, dst
     push ecx
     push edx
@@ -715,16 +716,60 @@ endm
 float_to_int proc ; (uint32 [float]) -> int32
     push ebp
     mov ebp, esp
+
+    sub esp, 8
+    sign        equ dword ptr [EBP - 4]
+    exponent    equ dword ptr [EBP - 8]
+    exponent_ll equ  byte ptr [EBP - 8]  ; little endian
+    mantissa    equ EAX
+    buffer      equ ECX
+    buffer_ll   equ CL
     
+    mov edx, dword ptr [EBP + 6]
+    float_decompose edx, sign, exponent, mantissa
 
-    target equ edx
-    mov target, dword ptr [epb + 6]
+_init_done:
+    sub exponent_ll, 127
+    cmp exponent_ll, 31  ; keep one bit for the sign
+    jg _overflow
+    
+    cmp exponent_ll, 0
+        jg _not_trivial
+    mov eax, 0
+    jmp _epilogue
 
+_not_trivial:
+    or mantissa, 0800000h; 1 << 23
+    cmp exponent_ll, 23
+    jg _exponent_gt_23
+    jmp _exponent_le_23
 
+_exponent_le_23:
+    mov buffer_ll, 23
+    sub buffer_ll, exponent_ll
+    shr mantissa, buffer_ll
+    cmp sign, 1
+        jne _epilogue
+    neg mantissa
+    jmp _epilogue
+
+_exponent_gt_23:
+    mov buffer_ll, exponent_ll
+    sub buffer_ll, 23
+    shl mantissa, buffer_ll
+    
+    cmp sign, 1
+        jne _epilogue
+    neg mantissa
+    jmp _epilogue
+
+_epilogue:
     mov esp, ebp
     pop ebp
     ret
-float_display endp
+_overflow:
+    exit_with_message err_float_to_int_overflow
+float_to_int endp
     
 display_float proc ; (uint32 float) -> void
     push ebp
@@ -733,8 +778,7 @@ display_float proc ; (uint32 float) -> void
     mov esp, ebp
     pop ebp
     ret
-display_float  endp
-
+display_float endp
 
 main proc
     mov    eax, data
@@ -751,12 +795,15 @@ main proc
     scan_float first_str left
     scan_float second_str right
     
-    mov eax, right
-    push right
-    mov eax, left
     push left
-    call float_mul
-    add esp, 8
+    call float_to_int
+    
+    ; mov eax, right
+    ; push right
+    ; mov eax, left
+    ; push left
+    ; call float_mul
+    ; add esp, 8
     
     xor    eax, eax
     mov    ah, 4Ch
