@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     first_str db (first_EOF - $ - 1)
-              db "-4"
+              db "-0.1"
     first_EOF db "$"
     
     second_str db (second_EOF - $ - 1)
@@ -14,7 +14,7 @@ data segment use16
     second_EOF db "$"
 
     err_unexpected_chr        db "Invalid symbol in number"
-    err_float_to_int_overflow db "Overflow detected in float_to_int$"
+    err_float_to_int32_overflow db "Overflow detected in float_to_int32$"
 data ends
  
 code segment 'code' use16
@@ -54,14 +54,16 @@ input proc
 input endp
 
 ; eax, ecx, edx are caller-safe!
-parse_float proc ; (uint16 len, char *str)
+float_parse proc ; (uint16 len, char *str)
     push ebp
     mov ebp, esp
     
     sub ESP, 12;
-    mov dword ptr [EBP - 4], 0 ; sign data
+    sign equ dword ptr [EBP - 4]
+    mov sign, 0 ; sign data
     mov dword ptr [EBP - 8], 0 ; mantissa buffer
-    mov dword ptr [EBP - 12], 0 ; additional exponent
+    exp_from_mantissa equ dword ptr [EBP - 12]
+    mov exp_from_mantissa, 0 
     
     ; callee-safe registers
     push bx
@@ -82,16 +84,19 @@ parse_float proc ; (uint16 len, char *str)
     xor si, si
     
     cmp byte ptr [str_ptr], '-'
-        jne _after_sign 
-        mov byte ptr [EBP - 1], 080h  ; 2^7
+        jne _after_sign_check 
+        mov sign, 080000000h ; 1 << 31
         inc si
     
-_after_sign:
+_after_sign_check:
     exponent EQU EDX
     xor exponent, exponent
+
+    mantissa EQU ECX
+    xor mantissa, mantissa
 _loop:
     cmp si, len
-    je _no_dot
+    je _check_for_value_triviality 
     
     cmp byte ptr [str_ptr + si], '.'
     je _found_dot
@@ -107,20 +112,13 @@ _loop:
     
     inc si
     jmp _loop
-
-_no_dot:
-    mantissa EQU ECX
-
-    xor mantissa,mantissa
-    jmp _build_float
     
 _found_dot:
     inc si ; skipping the dot
     
-    push whole_part
-    push mantissa
+    push whole_part 
     
-    sub ebp, 12
+    sub ebp, 12  ; exp_from_mantissa's address
     push ebp
     add ebp, 12
     
@@ -135,29 +133,40 @@ _found_dot:
     
     add str_ptr, si
     push str_ptr
-
     sub len, si
     push len
-    
     call parse_mantissa
+    add esp, 10
 
-    pop len
-    pop str_ptr
-    
-    add esp, 2
-    add esp, 4
+    mov exponent, exp_from_mantissa 
 
-    mov exponent, dword ptr [ebp - 12]
-
-    pop mantissa
     mov mantissa, eax
     pop whole_part
+    
+_check_for_value_triviality:
+    cmp whole_part, 0
+        jne _build_float
+
+    cmp exponent, 0
+        je _check_mantissa_triviality
+    mov whole_part, 1
+    jmp _build_float
+    
+_check_mantissa_triviality:
+    cmp mantissa, 0
+        je _value_is_zero
+    mov whole_part, 1
+    jmp _build_float
+    
+_value_is_zero:
+    mov eax, 0
+    jmp _epilogue
 
 _build_float:
-    
+        
 _loop2:
     cmp whole_part, 1
-        jle _loop2_end 
+        je _loop2_end 
     
     inc exponent
     
@@ -176,7 +185,7 @@ _loop2_end:
     shl exponent, 24
     shr exponent, 1
     
-    or exponent, dword ptr [ebp - 4]  ; adding a sign bit
+    or exponent, sign
     shr mantissa, 9
     or mantissa, exponent
 
@@ -194,7 +203,7 @@ _epilogue:
 
 _error:
     exit_with_message err_unexpected_chr
-parse_float endp
+float_parse endp
 
 parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
     push ebp
@@ -698,7 +707,7 @@ scan_float macro loc, dst
     xor dx, dx
     mov dl, byte ptr [loc] 
     push dx
-    call parse_float
+    call float_parse
     sub esp, 4
     mov dst, eax
 
@@ -707,10 +716,10 @@ scan_float macro loc, dst
 endm
     
 float_negate macro target
-    xor target 080000000h ; 1 << 31
+    xor target, 080000000h ; 1 << 31
 endm
     
-float_to_int proc ; (uint32 [float]) -> int32
+float_to_int32 proc ; (uint32 [float]) -> int32
     push ebp
     mov ebp, esp
 
@@ -765,8 +774,8 @@ _epilogue:
     pop ebp
     ret
 _overflow:
-    exit_with_message err_float_to_int_overflow
-float_to_int endp
+    exit_with_message err_float_to_int32_overflow
+float_to_int32 endp
     
 int32_to_float proc ; (int32) -> float
     push ebp
@@ -795,7 +804,7 @@ _sign_determined:
     exponent    equ ecx
     exponent_ll equ cl
     xor exponent, exponent 
-
+    
     bsr exponent, num
     cmp exponent_ll, 23
     jl _first_bit_index_lt_23
@@ -883,22 +892,75 @@ print_i32 endp
 display_float proc ; (uint32 float) -> void
     push ebp
     mov ebp, esp
+    
+    sub esp, 5
 
-    num    equ EDX
-    buffer equ ECX
-    
-    mov num, dword ptr [ebp + 6]
-    
-    push ecx 
-    push edx
-    
+    iter_count equ  byte ptr [ebp - 1]
+
+    float_10   equ dword ptr [ebp - 5]
+    mov eax, 10
+    push eax
+    call int32_to_float
+    mov float_10, eax
+
+    num equ dword ptr [ebp + 6]
+
     push num
-    call float_to_int
-    add num, 4
+    call float_to_int32
+    add esp, 4
     
-    pop edx
-    pop ecx 
+    push eax ; save int(num)
+    push eax
+    call print_i32
+    add esp, 4
+    pop eax  ; restore int(num)
     
+    push eax
+    call int32_to_float
+    add esp, 4
+    
+    float_negate eax
+    push eax
+    push num
+    call float_add
+    add esp, 8
+    
+    decimal_part equ edx
+    mov decimal_part, eax
+
+    push dx
+    mov ah, 2                       
+    mov dx, '.'
+    int 21h    
+    pop dx
+
+    mov iter_count, 0
+_while:
+    cmp iter_count, 10 ; how many digits to print after the point
+    je _while_done
+    
+    push edx ; save decimal_part
+    
+    push float_10
+    push decimal_part
+    call float_mul
+    add esp, 8
+    
+    push eax
+    call float_to_int32
+    
+    mov dx, ax
+    add dx, '0'
+    mov ah, 2                       
+    int 21h    
+    
+    pop edx  ; restore decimal_part
+
+    inc iter_count 
+    jmp _while
+_while_done:
+
+_epilogue:
     mov esp, ebp
     pop ebp
     ret
@@ -918,17 +980,20 @@ main proc
     
     scan_float first_str left
     scan_float second_str right
+    
+    push left
+    call display_float
 
-    mov eax, 0
-    push eax
-    call print_i32
+    ; mov eax, 0
+    ; push eax
+    ; call print_i32
     
     ; mov eax, 2
     ; push eax
     ; call int32_to_float
 
     ; push left
-    ; call float_to_int
+    ; call float_to_int32
     
     ; mov eax, right
     ; push right
