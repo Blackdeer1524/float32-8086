@@ -6,7 +6,7 @@ data segment use16
     ;          db ?          ;NUMBER OF CHARACTERS ENTERED BY USER.
     ;          db 26 dup(0)  ;CHARACTERS ENTERED BY USER.
     first_str db (first_EOF - $ - 1)
-              db "1.2"
+              db "-239.123"
     first_EOF db "$"
     
     second_str db (second_EOF - $ - 1)
@@ -739,8 +739,8 @@ float_to_int32 proc ; (uint32 [float]) -> int32
 
     sub esp, 8
     sign__float_to_int32        equ dword ptr [EBP - 4]
-    exponent__float_to_int32    equ EDX; dword ptr [EBP - 8]
-    exponent_ll__float_to_int32 equ DL;  byte ptr [EBP - 8]  ; little endian
+    exponent__float_to_int32    equ dword ptr [EBP - 8]
+    exponent_ll__float_to_int32 equ byte ptr [EBP - 8]  ; little endian
     mantissa__float_to_int32    equ EAX
     buffer__float_to_int32      equ ECX
     buffer_ll__float_to_int32   equ CL
@@ -1019,6 +1019,7 @@ main proc
     ; scan_float second_str right__main
     
     push left__main
+    ; check with 411ffff8
     ; call float_to_int32
     call display_float
 
