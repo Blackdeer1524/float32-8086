@@ -134,7 +134,7 @@ _found_dot__float_parse:
     push str_ptr__float_parse
     sub len__float_parse, si
     push len__float_parse
-    call parse_mantissa
+    call parse_decimal
     add esp, 10
 
     mov exponent__float_parse, exp_from_mantissa__float_parse 
@@ -204,7 +204,7 @@ _error__float_parse:
     exit_with_message err_unexpected_chr
 float_parse endp
 
-parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
+parse_decimal proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
     push ebp
     mov ebp, esp
     
@@ -217,123 +217,123 @@ parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stac
 
     xor eax, eax ; mantissa
     
-    len__parse_mantissa EQU word PTR [EBP + 6]     
+    len__parse_decimal EQU word PTR [EBP + 6]     
     
-    str_ptr__parse_mantissa EQU bx
-    mov str_ptr__parse_mantissa, WORD PTR [EBP + 6 + 2]  ; str_ptr__parse_mantissa. points after a dot symbol
+    str_ptr__parse_decimal EQU bx
+    mov str_ptr__parse_decimal, WORD PTR [EBP + 6 + 2]  ; str_ptr__parse_decimal. points after a dot symbol
     
-    still_skipping_flag__parse_mantissa equ word ptr [ebp + 6 + 4]
+    still_skipping_flag__parse_decimal equ word ptr [ebp + 6 + 4]
     
-    exponent_ptr__parse_mantissa equ EDI
-    mov exponent_ptr__parse_mantissa, DWORD PTR [EBP + 6 + 6]
-    mov dword ptr [exponent_ptr__parse_mantissa], 0
+    exponent_ptr__parse_decimal equ EDI
+    mov exponent_ptr__parse_decimal, DWORD PTR [EBP + 6 + 6]
+    mov dword ptr [exponent_ptr__parse_decimal], 0
     
-    MAX_MANTISSA_SIZE__parse_mantissa = 23
-    cmp len__parse_mantissa, MAX_MANTISSA_SIZE__parse_mantissa 
-    jle _mantissa_is_at_most_23__parse_mantissa
-        mov len__parse_mantissa, MAX_MANTISSA_SIZE__parse_mantissa
+    MAX_MANTISSA_SIZE__parse_decimal = 23
+    cmp len__parse_decimal, MAX_MANTISSA_SIZE__parse_decimal 
+    jle _mantissa_is_at_most_23__parse_decimal
+        mov len__parse_decimal, MAX_MANTISSA_SIZE__parse_decimal
 
-_mantissa_is_at_most_23__parse_mantissa:
+_mantissa_is_at_most_23__parse_decimal:
     xor si, si 
-_normaize_loop__parse_mantissa:
-    cmp si, len__parse_mantissa
-    jge _normaize_loop_end__parse_mantissa
+_normaize_loop__parse_decimal:
+    cmp si, len__parse_decimal
+    jge _normaize_loop_end__parse_decimal
     
-    cmp byte ptr [str_ptr__parse_mantissa + si], '0'
-    jl _error__parse_mantissa
+    cmp byte ptr [str_ptr__parse_decimal + si], '0'
+    jl _error__parse_decimal
 
-    cmp byte ptr [str_ptr__parse_mantissa + si], '9'
-    jg _error__parse_mantissa
+    cmp byte ptr [str_ptr__parse_decimal + si], '9'
+    jg _error__parse_decimal
     
-    sub byte ptr [str_ptr__parse_mantissa + si], '0'
+    sub byte ptr [str_ptr__parse_decimal + si], '0'
     inc si
-    jmp _normaize_loop__parse_mantissa
-_normaize_loop_end__parse_mantissa:
+    jmp _normaize_loop__parse_decimal
+_normaize_loop_end__parse_decimal:
     
-    has_decimal_part__parse_mantissa EQU byte ptr [EBP - 1]
-    iteration_count__parse_mantissa EQU byte ptr [EBP - 2]
-    mov iteration_count__parse_mantissa, 0
+    has_decimal_part__parse_decimal EQU byte ptr [EBP - 1]
+    iteration_count__parse_decimal EQU byte ptr [EBP - 2]
+    mov iteration_count__parse_decimal, 0
 
     mov cl, 31
-_decimal_part_outer_start__parse_mantissa:
-    cmp iteration_count__parse_mantissa, MAX_MANTISSA_SIZE__parse_mantissa
-        je _decimal_part_outer_end__parse_mantissa
+_decimal_part_outer_start__parse_decimal:
+    cmp iteration_count__parse_decimal, MAX_MANTISSA_SIZE__parse_decimal
+        je _decimal_part_outer_end__parse_decimal
 
-    inc iteration_count__parse_mantissa
+    inc iteration_count__parse_decimal
 
-    mov si, len__parse_mantissa
+    mov si, len__parse_decimal
     dec si
     
-    carry__parse_mantissa equ edx
-    xor carry__parse_mantissa, carry__parse_mantissa 
-    carry_l__parse_mantissa equ dl
+    carry__parse_decimal equ edx
+    xor carry__parse_decimal, carry__parse_decimal 
+    carry_l__parse_decimal equ dl
 
-    mov has_decimal_part__parse_mantissa, 0 
-    _decimal_part_inner__parse_mantissa:
-        digit__parse_mantissa EQU byte ptr [str_ptr__parse_mantissa + si]
+    mov has_decimal_part__parse_decimal, 0 
+    _decimal_part_inner__parse_decimal:
+        digit__parse_decimal EQU byte ptr [str_ptr__parse_decimal + si]
     
-        add carry_l__parse_mantissa, digit__parse_mantissa 
-        add digit__parse_mantissa, carry_l__parse_mantissa ; multiply digit__parse_mantissa by 2 with a carry__parse_mantissa
+        add carry_l__parse_decimal, digit__parse_decimal 
+        add digit__parse_decimal, carry_l__parse_decimal ; multiply digit__parse_decimal by 2 with a carry__parse_decimal
         
-        cmp digit__parse_mantissa, 10
-        jl _decimal_part_inner_digit_lt_10__parse_mantissa
-            sub digit__parse_mantissa, 10
-            mov carry_l__parse_mantissa, 1
-            jmp _decimal_part_inner_digit_lt_10_done__parse_mantissa
-        _decimal_part_inner_digit_lt_10__parse_mantissa:
-            xor carry_l__parse_mantissa, carry_l__parse_mantissa 
-            jmp _decimal_part_inner_digit_lt_10_done__parse_mantissa 
+        cmp digit__parse_decimal, 10
+        jl _decimal_part_inner_digit_lt_10__parse_decimal
+            sub digit__parse_decimal, 10
+            mov carry_l__parse_decimal, 1
+            jmp _decimal_part_inner_digit_lt_10_done__parse_decimal
+        _decimal_part_inner_digit_lt_10__parse_decimal:
+            xor carry_l__parse_decimal, carry_l__parse_decimal 
+            jmp _decimal_part_inner_digit_lt_10_done__parse_decimal 
  
-       _decimal_part_inner_digit_lt_10_done__parse_mantissa: 
-        cmp digit__parse_mantissa, 0
-            je cmp_done__parse_mantissa 
-            mov has_decimal_part__parse_mantissa, 1
-        cmp_done__parse_mantissa:
+       _decimal_part_inner_digit_lt_10_done__parse_decimal: 
+        cmp digit__parse_decimal, 0
+            je cmp_done__parse_decimal 
+            mov has_decimal_part__parse_decimal, 1
+        cmp_done__parse_decimal:
         
         cmp si, 0
-        je _decimal_part_inner_end__parse_mantissa
+        je _decimal_part_inner_end__parse_decimal
 
         dec si
-        jmp _decimal_part_inner__parse_mantissa
-_decimal_part_inner_end__parse_mantissa:    
-    cmp has_decimal_part__parse_mantissa, 1
-        jne _no_decimal_part_left__parse_mantissa
+        jmp _decimal_part_inner__parse_decimal
+_decimal_part_inner_end__parse_decimal:    
+    cmp has_decimal_part__parse_decimal, 1
+        jne _no_decimal_part_left__parse_decimal
 
-        cmp still_skipping_flag__parse_mantissa, 1
-            jne _after_still_skipping_flag__parse_mantissa
-            cmp carry__parse_mantissa, 0
-                je _carry_cmp_done__parse_mantissa
-                mov still_skipping_flag__parse_mantissa, 0
+        cmp still_skipping_flag__parse_decimal, 1
+            jne _after_still_skipping_flag__parse_decimal
+            cmp carry__parse_decimal, 0
+                je _carry_cmp_done__parse_decimal
+                mov still_skipping_flag__parse_decimal, 0
         
-            _carry_cmp_done__parse_mantissa:
-            dec iteration_count__parse_mantissa
-            dec dword ptr ss:[exponent_ptr__parse_mantissa]
-            jmp _decimal_part_outer_start__parse_mantissa
+            _carry_cmp_done__parse_decimal:
+            dec iteration_count__parse_decimal
+            dec dword ptr ss:[exponent_ptr__parse_decimal]
+            jmp _decimal_part_outer_start__parse_decimal
             
-        _after_still_skipping_flag__parse_mantissa:
-        shl carry__parse_mantissa, CL
+        _after_still_skipping_flag__parse_decimal:
+        shl carry__parse_decimal, CL
         dec CL
         
-        or eax, carry__parse_mantissa
-        jmp _decimal_part_outer_start__parse_mantissa
+        or eax, carry__parse_decimal
+        jmp _decimal_part_outer_start__parse_decimal
 
-    _no_decimal_part_left__parse_mantissa:
-        cmp carry__parse_mantissa, 0
-        je _decimal_part_outer_end__parse_mantissa
+    _no_decimal_part_left__parse_decimal:
+        cmp carry__parse_decimal, 0
+        je _decimal_part_outer_end__parse_decimal
 
-        cmp still_skipping_flag__parse_mantissa, 1
-            jne _after_still_skipping_flag_no_decimal__parse_mantissa
-            dec dword ptr ss:[exponent_ptr__parse_mantissa]
-            jmp _decimal_part_outer_end__parse_mantissa
+        cmp still_skipping_flag__parse_decimal, 1
+            jne _after_still_skipping_flag_no_decimal__parse_decimal
+            dec dword ptr ss:[exponent_ptr__parse_decimal]
+            jmp _decimal_part_outer_end__parse_decimal
             
-        _after_still_skipping_flag_no_decimal__parse_mantissa:
-        shl carry__parse_mantissa, CL
+        _after_still_skipping_flag_no_decimal__parse_decimal:
+        shl carry__parse_decimal, CL
         dec CL
         
-        or eax, carry__parse_mantissa
+        or eax, carry__parse_decimal
 
-        jmp _decimal_part_outer_end__parse_mantissa 
-_decimal_part_outer_end__parse_mantissa:
+        jmp _decimal_part_outer_end__parse_decimal 
+_decimal_part_outer_end__parse_decimal:
     ; epilogue
     pop edi
     pop si
@@ -343,9 +343,9 @@ _decimal_part_outer_end__parse_mantissa:
     pop ebp
     ret
 
-_error__parse_mantissa: 
+_error__parse_decimal: 
     exit_with_message err_unexpected_chr
-parse_mantissa endp
+parse_decimal endp
     
 exchange_memory macro left, right, tmp_reg
     mov tmp_reg, left

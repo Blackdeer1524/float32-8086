@@ -134,7 +134,7 @@ _found_dot:
     push str_ptr
     sub len, si
     push len
-    call parse_mantissa
+    call parse_decimal
     add esp, 10
 
     mov exponent, exp_from_mantissa 
@@ -204,7 +204,7 @@ _error:
     exit_with_message err_unexpected_chr
 float_parse endp
 
-parse_mantissa proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
+parse_decimal proc  ; (uint16 len, char [data *] str, uint16 skip, uint32 [stack *] exponent)
     push ebp
     mov ebp, esp
     
@@ -345,7 +345,7 @@ _decimal_part_outer_end:
 
 _error: 
     exit_with_message err_unexpected_chr
-parse_mantissa endp
+parse_decimal endp
     
 exchange_memory macro left, right, tmp_reg
     mov tmp_reg, left
