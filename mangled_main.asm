@@ -57,7 +57,9 @@ float_parse proc ; (uint16 len, char *str)
     sub ESP, 12;
     sign__float_parse equ dword ptr [EBP - 4]
     mov sign__float_parse, 0 ; sign__float_parse data
-    mov dword ptr [EBP - 8], 0 ; mantissa buffer
+    
+    buffer__float_parse EQU dword ptr [EBP - 8]
+    mov buffer__float_parse, 0 ; mantissa buffer__float_parse
     exp_from_mantissa__float_parse equ dword ptr [EBP - 12]
     mov exp_from_mantissa__float_parse, 0 
     
@@ -90,6 +92,7 @@ _after_sign_check__float_parse:
 
     mantissa__float_parse EQU ECX
     xor mantissa__float_parse, mantissa__float_parse
+
 _loop__float_parse:
     cmp si, len__float_parse
     je _check_for_value_triviality__float_parse 
@@ -166,12 +169,12 @@ _loop2__float_parse:
     
     inc exponent__float_parse
     
-    mov byte ptr [ebp - 5], whole_part_l__float_parse
-    and byte ptr [ebp - 5], 1 
-    shl byte ptr [ebp - 5], 7
+    mov buffer__float_parse, whole_part__float_parse
+    and buffer__float_parse, 1 
+    shl buffer__float_parse, 31
     
     shr mantissa__float_parse, 1
-    or mantissa__float_parse, dword ptr [ebp - 8]
+    or mantissa__float_parse, buffer__float_parse
     
     shr whole_part__float_parse, 1
     jmp _loop2__float_parse

@@ -57,7 +57,9 @@ float_parse proc ; (uint16 len, char *str)
     sub ESP, 12;
     sign equ dword ptr [EBP - 4]
     mov sign, 0 ; sign data
-    mov dword ptr [EBP - 8], 0 ; mantissa buffer
+    
+    buffer EQU dword ptr [EBP - 8]
+    mov buffer, 0 ; mantissa buffer
     exp_from_mantissa equ dword ptr [EBP - 12]
     mov exp_from_mantissa, 0 
     
@@ -90,6 +92,7 @@ _after_sign_check:
 
     mantissa EQU ECX
     xor mantissa, mantissa
+
 _loop:
     cmp si, len
     je _check_for_value_triviality 
@@ -166,12 +169,12 @@ _loop2:
     
     inc exponent
     
-    mov byte ptr [ebp - 5], whole_part_l
-    and byte ptr [ebp - 5], 1 
-    shl byte ptr [ebp - 5], 7
+    mov buffer, whole_part
+    and buffer, 1 
+    shl buffer, 31
     
     shr mantissa, 1
-    or mantissa, dword ptr [ebp - 8]
+    or mantissa, buffer
     
     shr whole_part, 1
     jmp _loop2

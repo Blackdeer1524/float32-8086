@@ -2,7 +2,6 @@ from enum import Enum, auto
 from dataclasses import dataclass, field
 import os
 import sys
-from stat import S_IREAD, S_IRGRP, S_IROTH
 
 
 class BlockType(Enum):
