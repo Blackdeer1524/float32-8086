@@ -48,6 +48,7 @@ input proc ; (char *) -> void
     pop ebp
     ret
 input endp
+
 ; eax, ecx, edx are caller-safe!
 float_parse proc ; (uint16 len, char *str)
     push ebp
@@ -372,7 +373,7 @@ float_decompose macro num_reg, sign32, exponent32, mantissa32
     shr mantissa32, 9
 endm
     
-is_float_zero macro float, temp_reg
+float_check_zero macro float, temp_reg
     mov temp_reg, float
     shl temp_reg, 1
     shr temp_reg, 1
@@ -398,13 +399,13 @@ float_add proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
     mov left, dword ptr [EBP + 6]
     mov right, dword ptr [EBP + 10]
 
-    is_float_zero left, buffer
+    float_check_zero left, buffer
     jne _left_not_trivial
     mov eax, right
     jmp _epilogue
 
 _left_not_trivial:          
-    is_float_zero right, buffer
+    float_check_zero right, buffer
     jne _not_trivial 
     mov eax, left
     jmp _epilogue
@@ -591,13 +592,13 @@ float_mul proc ; (uint32 [float] left, uint32 [float] right) -> uint32 [float]
     mov left, dword ptr [EBP + 6]
     mov right, dword ptr [EBP + 10]
 
-    is_float_zero left, buffer
+    float_check_zero left, buffer
     jne _left_not_trivial
     mov eax, 0
     jmp _epilogue
 
 _left_not_trivial:          
-    is_float_zero right, buffer
+    float_check_zero right, buffer
     jne _not_trivial 
     mov eax, 0
     jmp _epilogue
@@ -721,7 +722,7 @@ float_negate macro target
     xor target, 080000000h ; 1 << 31
 endm
 
-float_is_positive macro target
+float_check_positivity macro target
     push target
     shr target, 31
     cmp target, 0
@@ -845,7 +846,6 @@ _epilogue:
     ret
 int32_to_float endp
 
-
 ; https://stackoverflow.com/a/5812104
 print_i32 proc ; (int32) -> void
     push ebp 
@@ -898,7 +898,7 @@ _epilogue:
     ret
 print_i32 endp
 
-display_float proc ; (uint32 float) -> void
+float_display proc ; (uint32 float) -> void
     push ebp
     mov ebp, esp
     
@@ -914,7 +914,7 @@ display_float proc ; (uint32 float) -> void
     mov float_10, eax
     
     num equ dword ptr [ebp + 6]
-    float_is_positive num
+    float_check_positivity num
     je _float_is_positive
 
     mov ah, 2                       
@@ -996,7 +996,7 @@ _epilogue:
     mov esp, ebp
     pop ebp
     ret
-display_float endp
+float_display endp
 
 main proc
     mov    eax, data
@@ -1036,7 +1036,7 @@ main proc
     add esp, 8
     
     push eax
-    call display_float
+    call float_display
     add esp, 4
     
     xor    eax, eax
