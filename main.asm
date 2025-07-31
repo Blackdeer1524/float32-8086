@@ -1035,7 +1035,7 @@ main proc
     
     push left
     push right
-    call float_add
+    call float_mul
     add esp, 8
     
     push eax
